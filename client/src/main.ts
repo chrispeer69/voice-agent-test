@@ -65,7 +65,7 @@ function startTimer(){startedAt=Date.now();timerHandle=window.setInterval(()=>{c
 function stopTimer(){if(timerHandle)clearInterval(timerHandle);timerHandle=undefined;updateMetrics()}
 const client=new PipecatClient({transport:new SmallWebRTCTransport(),enableMic:true,enableCam:false,callbacks:{
  onTransportStateChanged:(s:TransportState)=>{if(s==="connecting")setStatus("Connecting","busy")},
- onConnected:()=>{awaitingOpening=true;void client.enableMic(false);const opening=scriptBody.value.match(/^(?:AI|SAY):\s*"([^"\n]+)"/m)?.[1];if(opening)addMessage("agent",opening);setStatus("Emily is opening the call","live");setActivity("Please wait for Emily’s greeting",true);connectButton.disabled=true;disconnectButton.disabled=false;muteButton.disabled=true;voiceSelect.disabled=true;modelSelect.disabled=true;scenarioSelect.disabled=true;startTimer()},
+ onConnected:()=>{awaitingOpening=true;void client.enableMic(false);setStatus("Emily is opening the call","live");setActivity("Please wait for Emily’s greeting",true);connectButton.disabled=true;disconnectButton.disabled=false;muteButton.disabled=true;voiceSelect.disabled=true;modelSelect.disabled=true;scenarioSelect.disabled=true;startTimer()},
  onDisconnected:()=>{setStatus("Test ended");setActivity("Score this run or try another");connectButton.disabled=false;disconnectButton.disabled=true;muteButton.disabled=true;voiceSelect.disabled=false;modelSelect.disabled=false;scenarioSelect.disabled=false;stopTimer()},
  onUserStartedSpeaking:()=>{if(!awaitingOpening)setActivity("Listening to you",true)},
  onUserStoppedSpeaking:()=>{waitingSince=Date.now();setActivity("Emily is thinking…")},
@@ -73,7 +73,7 @@ const client=new PipecatClient({transport:new SmallWebRTCTransport(),enableMic:t
  onBotStoppedSpeaking:()=>{partialAgentMessage=null;if(awaitingOpening){awaitingOpening=false;void client.enableMic(true);muteButton.disabled=false;setStatus("Test call live","live");setActivity("Your turn — Emily is listening")}else setActivity("Listening")},
  onUserTranscript:(d:TranscriptData)=>{if(d.final)appendCallerText(d.text)},
  onBotTranscript:(d:BotLLMTextData)=>appendAgentText(d.text),
- onServerMessage:(d:any)=>{if(d?.type!=="usage")return;if(d.service==="llm"){llmInputTokens+=Number(d.input_tokens||0);llmOutputTokens+=Number(d.output_tokens||0);llmCacheReadTokens+=Number(d.cache_read_tokens||0);llmCacheWriteTokens+=Number(d.cache_write_tokens||0)}else if(d.service==="tts")ttsCharacters+=Number(d.characters||0);else if(d.service==="stt")sttAudioSeconds+=Number(d.audio_seconds||0);updateMetrics()},
+ onServerMessage:(d:any)=>{if(d?.type==="opening"){addMessage("agent",String(d.text||""));return}if(d?.type!=="usage")return;if(d.service==="llm"){llmInputTokens+=Number(d.input_tokens||0);llmOutputTokens+=Number(d.output_tokens||0);llmCacheReadTokens+=Number(d.cache_read_tokens||0);llmCacheWriteTokens+=Number(d.cache_write_tokens||0)}else if(d.service==="tts")ttsCharacters+=Number(d.characters||0);else if(d.service==="stt")sttAudioSeconds+=Number(d.audio_seconds||0);updateMetrics()},
  onTrackStarted:(track:MediaStreamTrack,p?:Participant)=>{if(!p?.local&&track.kind==="audio")botAudio.srcObject=new MediaStream([track])},
  onError:(e)=>{console.error(e);setStatus("Connection error","error");setActivity("Check the agent server and API keys")}
 }});

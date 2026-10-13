@@ -248,7 +248,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     requested_voice = (
         runner_args.body.get("voice") if isinstance(runner_args.body, dict) else None
     )
-    request_body = runner_args.body if isinstance(runner_args.body, dict) else {}
+    raw_request_body = runner_args.body if isinstance(runner_args.body, dict) else {}
+    nested_request_data = raw_request_body.get("requestData")
+    request_body = (
+        nested_request_data
+        if isinstance(nested_request_data, dict)
+        else raw_request_body
+    )
     # This lab is intentionally scoped to Emily's outbound confirmation agent.
     mode = "outbound"
     is_outbound = True
@@ -338,7 +344,19 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         # Without this buffer, the start of the fixed outbound greeting can be
         # clipped and background speech can incorrectly advance the script.
         await asyncio.sleep(0.75)
-        await worker.queue_frames([TTSSpeakFrame(greeting)])
+        await worker.queue_frames(
+            [
+                OutputTransportMessageUrgentFrame(
+                    {
+                        "label": "rtvi-ai",
+                        "id": str(uuid.uuid4()),
+                        "type": "server-message",
+                        "data": {"type": "opening", "text": greeting},
+                    }
+                ),
+                TTSSpeakFrame(greeting),
+            ]
+        )
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(_transport, _client):
