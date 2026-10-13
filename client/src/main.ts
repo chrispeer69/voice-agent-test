@@ -48,7 +48,7 @@ const connectButton=byId<HTMLButtonElement>("connect"), disconnectButton=byId<HT
 const status=byId("status"), statusDot=byId("status-dot"), activity=byId("activity"), transcript=byId("transcript"), messageCount=byId("message-count"), timer=byId("timer"), orb=byId("orb"), botAudio=byId<HTMLAudioElement>("bot-audio");
 const agentPrompt=byId<HTMLTextAreaElement>("agent-prompt"), scriptBody=byId<HTMLTextAreaElement>("script-body"), builderConfig=byId<HTMLTextAreaElement>("builder-config");
 let startedAt=0, timerHandle:number|undefined, messages=0, muted=false, partialAgentMessage:HTMLDivElement|null=null, partialCallerMessage:HTMLDivElement|null=null, callerChars=0, agentChars=0, callerTurns=0, waitingSince=0, latencyTotal=0, latencySamples=0, activeScenario=scenarios[0], verdict="Not scored";
-let llmInputTokens=0,llmOutputTokens=0,llmCacheReadTokens=0,llmCacheWriteTokens=0,ttsCharacters=0,sttAudioSeconds=0;
+let llmInputTokens=0,llmOutputTokens=0,llmCacheReadTokens=0,llmCacheWriteTokens=0,ttsCharacters=0,sttAudioSeconds=0,awaitingOpening=false;
 let productionPrompt="",productionScript="",productionBuilder="";
 
 function setStatus(label:string,state:"idle"|"busy"|"live"|"error"="idle"){status.textContent=label;statusDot.dataset.state=state}
@@ -67,12 +67,12 @@ renderScenario(activeScenario);
 
 const client=new PipecatClient({transport:new SmallWebRTCTransport(),enableMic:true,enableCam:false,callbacks:{
  onTransportStateChanged:(s:TransportState)=>{if(s==="connecting")setStatus("Connecting","busy")},
- onConnected:()=>{setStatus("Test call live","live");setActivity("Emily is greeting you");connectButton.disabled=true;disconnectButton.disabled=false;muteButton.disabled=false;voiceSelect.disabled=true;modelSelect.disabled=true;startTimer()},
+ onConnected:()=>{awaitingOpening=true;void client.enableMic(false);const opening=scriptBody.value.match(/^(?:AI|SAY):\s*"([^"\n]+)"/m)?.[1];if(opening)addMessage("agent",opening);setStatus("Emily is opening the call","live");setActivity("Please wait for Emily’s greeting",true);connectButton.disabled=true;disconnectButton.disabled=false;muteButton.disabled=true;voiceSelect.disabled=true;modelSelect.disabled=true;startTimer()},
  onDisconnected:()=>{setStatus("Test ended");setActivity("Score this run or try another");connectButton.disabled=false;disconnectButton.disabled=true;muteButton.disabled=true;voiceSelect.disabled=false;modelSelect.disabled=false;stopTimer()},
- onUserStartedSpeaking:()=>setActivity("Listening to you",true),
+ onUserStartedSpeaking:()=>{if(!awaitingOpening)setActivity("Listening to you",true)},
  onUserStoppedSpeaking:()=>{waitingSince=Date.now();setActivity("Emily is thinking…")},
  onBotStartedSpeaking:()=>{partialCallerMessage=null;if(waitingSince){latencyTotal+=Date.now()-waitingSince;latencySamples++;waitingSince=0;updateMetrics()}setActivity("Emily is speaking",true)},
- onBotStoppedSpeaking:()=>{partialAgentMessage=null;setActivity("Listening")},
+ onBotStoppedSpeaking:()=>{partialAgentMessage=null;if(awaitingOpening){awaitingOpening=false;void client.enableMic(true);muteButton.disabled=false;setStatus("Test call live","live");setActivity("Your turn — Emily is listening")}else setActivity("Listening")},
  onUserTranscript:(d:TranscriptData)=>{if(d.final)appendCallerText(d.text)},
  onBotTranscript:(d:BotLLMTextData)=>appendAgentText(d.text),
  onServerMessage:(d:any)=>{if(d?.type!=="usage")return;if(d.service==="llm"){llmInputTokens+=Number(d.input_tokens||0);llmOutputTokens+=Number(d.output_tokens||0);llmCacheReadTokens+=Number(d.cache_read_tokens||0);llmCacheWriteTokens+=Number(d.cache_write_tokens||0)}else if(d.service==="tts")ttsCharacters+=Number(d.characters||0);else if(d.service==="stt")sttAudioSeconds+=Number(d.audio_seconds||0);updateMetrics()},
