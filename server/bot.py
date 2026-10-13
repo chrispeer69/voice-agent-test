@@ -1,4 +1,3 @@
-import asyncio
 import os
 import re
 import uuid
@@ -31,7 +30,7 @@ load_dotenv()
 ROOT = Path(__file__).resolve().parent
 PROMPT = (ROOT / "emily-inbound.txt").read_text()
 OUTBOUND_PROMPT = (ROOT / "emily-outbound.txt").read_text()
-OUTBOUND_SAMPLE_SCRIPT = (ROOT / "outbound-sample-script.txt").read_text()
+OUTBOUND_SAMPLE_SCRIPT = (ROOT / "scenario-competitor_repair.txt").read_text()
 SAFE_TEST_MODE = os.getenv("SAFE_TEST_MODE", "true").lower() != "false"
 
 LAB_RULES = """
@@ -329,21 +328,20 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
     await runner.add_workers(worker)
 
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(_transport, _client):
-        logger.info(f"Browser connected in {mode} mode")
-        opening_match = re.search(r'^(?:AI|SAY):\s*"([^"\n]+)"', outbound_script, re.MULTILINE)
-        greeting = (
-            opening_match.group(1)
-            if is_outbound and opening_match
-            else OUTBOUND_GREETING if is_outbound else OPENING_GREETING
-        )
+    opening_match = re.search(r'^(?:AI|SAY):\s*"([^"\n]+)"', outbound_script, re.MULTILINE)
+    greeting = (
+        opening_match.group(1)
+        if is_outbound and opening_match
+        else OUTBOUND_GREETING if is_outbound else OPENING_GREETING
+    )
+
+    @worker.event_handler("on_pipeline_started")
+    async def on_pipeline_started(_worker, _frame):
+        # Queue the opening only after STT, TTS and the browser transport are ready.
+        # Sending it from on_client_connected races pipeline startup and can let an
+        # accidental mic frame advance the model before the greeting is heard.
         if is_outbound:
             context.add_message({"role": "assistant", "content": greeting})
-        # Give the browser time to attach the remote audio track and mute its mic.
-        # Without this buffer, the start of the fixed outbound greeting can be
-        # clipped and background speech can incorrectly advance the script.
-        await asyncio.sleep(0.75)
         await worker.queue_frames(
             [
                 OutputTransportMessageUrgentFrame(
@@ -357,6 +355,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
                 TTSSpeakFrame(greeting),
             ]
         )
+
+    @transport.event_handler("on_client_connected")
+    async def on_client_connected(_transport, _client):
+        logger.info(f"Browser connected in {mode} mode")
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(_transport, _client):

@@ -48,7 +48,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`, allow microphone access, and click **Start test call**.
+Open `http://127.0.0.1:5174`, allow microphone access, and click **Answer Emily's call**.
 
 ## Cost display
 
