@@ -33,9 +33,10 @@ h1 { font: 800 clamp(43px, 6vw, 70px)/.98 Manrope; letter-spacing: -.06em; margi
 .scenario-picker span { color: #e95b36; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .scenario-picker strong { display: block; margin-top: 5px; font: 700 16px Manrope; }
 .scenario-picker p { margin: 5px 0 0; color: #66747a; font-size: 12px; }
-#scenario-tabs { display: grid; grid-template-columns: repeat(2,1fr); gap: 7px; }
-#scenario-tabs button { padding: 10px 12px; border: 1px solid #d7d4cd; border-radius: 8px; background: #fff; color: #55646b; text-align: left; cursor: pointer; font-size: 12px; }
-#scenario-tabs button.selected { border-color: #e95b36; color: #a73a21; background: #fff1eb; font-weight: 700; }
+.route-summary { display: grid; grid-template-columns: repeat(2,1fr); gap: 7px; }
+.route-summary div { padding: 10px 12px; border: 1px solid #d7d4cd; border-radius: 8px; background: #fff; }
+.route-summary b,.route-summary span { display:block; font-size: 12px; }
+.route-summary span { margin-top:4px; color:#66747a; }
 .console { display: grid; grid-template-columns: minmax(340px, .8fr) minmax(440px, 1.2fr); min-height: 530px; border-radius: 22px; overflow: hidden; box-shadow: 0 24px 70px rgba(17, 31, 40, .13); }
 .call-panel { position: relative; display: flex; flex-direction: column; align-items: center; background: #0b1821; color: #fff; padding: 29px 34px 36px; }
 .status-row { width: 100%; display: flex; justify-content: space-between; align-items: center; color: #aab6bc; font-size: 12px; }
