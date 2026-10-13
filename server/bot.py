@@ -16,14 +16,16 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-from pipecat.runner.types import RunnerArguments
+from pipecat.runner.types import RunnerArguments, WebSocketRunnerArguments
 from pipecat.runner.utils import create_transport
+from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.flux.tts import DeepgramFluxTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.base_transport import BaseTransport, TransportParams
+from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams
 from pipecat.workers.runner import WorkerRunner
 
 load_dotenv()
@@ -231,6 +233,11 @@ async def transfer_to_dispatch(params: FunctionCallParams):
 
 transport_params = {
     "webrtc": lambda: TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+    "websocket": lambda: FastAPIWebsocketParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+        serializer=ProtobufFrameSerializer(),
+    ),
 }
 
 
@@ -381,6 +388,44 @@ async def bot(runner_args: RunnerArguments):
 
 
 if __name__ == "__main__":
-    from pipecat.runner.run import main
+    from fastapi import HTTPException, Request, WebSocket
+    from pipecat.runner.run import app, main
+
+    lab_sessions: dict[str, dict] = {}
+
+    @app.post("/lab/start")
+    async def start_lab_session(request: Request):
+        request_data = await request.json()
+        body = request_data.get("body", {})
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="body must be an object")
+
+        session_id = str(uuid.uuid4())
+        lab_sessions[session_id] = body
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if not host:
+            raise HTTPException(status_code=400, detail="Unable to determine WebSocket host")
+        forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        websocket_scheme = "wss" if forwarded_proto == "https" else "ws"
+        return {
+            "sessionId": session_id,
+            "wsUrl": f"{websocket_scheme}://{host}/lab/ws/{session_id}",
+        }
+
+    @app.websocket("/lab/ws/{session_id}")
+    async def lab_websocket(websocket: WebSocket, session_id: str):
+        body = lab_sessions.pop(session_id, None)
+        if body is None:
+            await websocket.close(code=4004, reason="Unknown or expired lab session")
+            return
+
+        await websocket.accept()
+        runner_args = WebSocketRunnerArguments(
+            websocket=websocket,
+            transport_type="websocket",
+            session_id=session_id,
+            body=body,
+        )
+        await bot(runner_args)
 
     main()
