@@ -61,6 +61,8 @@ Pipecat forwards Anthropic's reported input/output token usage and speech usage 
 
 Provider invoices remain the billing source of truth. Pricing constants in the prototype should be reviewed before a production deployment.
 
+The lab reports consumption for the current call. It does not query or display the remaining prepaid balance in either provider account.
+
 ## Safety
 
 `SAFE_TEST_MODE=true` is required. All included tool functions are deterministic simulations. Keep API keys only in `server/.env` locally or in secret environment variables on a hosting provider. The checked-in `.gitignore` excludes environment files, virtual environments, dependencies, and generated builds.
