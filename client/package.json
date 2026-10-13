@@ -1,0 +1,20 @@
+{
+  "name": "tow-agent-lab-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pipecat-ai/client-js": "^1.13.0",
+    "@pipecat-ai/small-webrtc-transport": "^1.10.6",
+    "lucide": "^0.468.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.3.6"
+  }
+}
