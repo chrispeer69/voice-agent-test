@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import uuid
@@ -333,6 +334,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         )
         if is_outbound:
             context.add_message({"role": "assistant", "content": greeting})
+        # Give the browser time to attach the remote audio track and mute its mic.
+        # Without this buffer, the start of the fixed outbound greeting can be
+        # clipped and background speech can incorrectly advance the script.
+        await asyncio.sleep(0.75)
         await worker.queue_frames([TTSSpeakFrame(greeting)])
 
     @transport.event_handler("on_client_disconnected")
