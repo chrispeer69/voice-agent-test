@@ -408,7 +408,6 @@ if __name__ == "__main__":
         forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
         websocket_scheme = "wss" if forwarded_proto == "https" else "ws"
         return {
-            "sessionId": session_id,
             "wsUrl": f"{websocket_scheme}://{host}/lab/ws/{session_id}",
         }
 
