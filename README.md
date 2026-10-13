@@ -11,7 +11,7 @@ This repository is isolated from `us-tow-ai-connect`. It uses sanitized fixture 
 - Compare five Deepgram voices
 - Edit the compact agent prompt and rendered two-offer call script
 - Review the current Script Builder configuration without Offer 3
-- Test acceptance, refusal, corrected job details, and ETA questions
+- Switch among the real production routes: competitor repair, auto body, residence, unknown, our shop, and AAA-branded destination
 - See the live transcript, response latency, actual LLM input/output tokens, separate STT/TTS/LLM costs, and total estimated cost per call
 - Save scored comparisons locally in the browser
 

@@ -32,6 +32,7 @@ h1 { font: 800 clamp(43px, 6vw, 70px)/.98 Manrope; letter-spacing: -.06em; margi
 .scenario-picker { display: grid; grid-template-columns: minmax(260px, .9fr) 1.5fr; gap: 30px; align-items: center; padding: 20px 24px; margin-bottom: 18px; border: 1px solid #d8d4ca; border-radius: 14px; background: #f8f7f3; }
 .scenario-picker span { color: #e95b36; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .scenario-picker strong { display: block; margin-top: 5px; font: 700 16px Manrope; }
+.scenario-picker select { display:block; width:100%; margin-top:7px; padding:9px 10px; border:1px solid #d7d4cd; border-radius:8px; background:#fff; color:#173442; font:700 13px Manrope; }
 .scenario-picker p { margin: 5px 0 0; color: #66747a; font-size: 12px; }
 .route-summary { display: grid; grid-template-columns: repeat(2,1fr); gap: 7px; }
 .route-summary div { padding: 10px 12px; border: 1px solid #d7d4cd; border-radius: 8px; background: #fff; }
