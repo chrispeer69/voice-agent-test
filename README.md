@@ -50,6 +50,33 @@ npm run dev
 
 Open `http://127.0.0.1:5174`, allow microphone access, and click **Answer Emily's call**.
 
+## Deploy to Railway
+
+Create two Railway services from this repository. Set the backend service Root
+Directory to `/server` and its Config File Path to `/server/railway.json`. Set
+the frontend service Root Directory to `/client` and its Config File Path to
+`/client/railway.json`. Railway cannot detect the application when the repository
+root is deployed because this is an isolated Python/Node monorepo.
+
+Backend variables:
+
+```text
+ANTHROPIC_API_KEY=...
+DEEPGRAM_API_KEY=...
+ANTHROPIC_MODEL=claude-sonnet-4-6
+DEEPGRAM_VOICE=aura-2-luna-en
+SAFE_TEST_MODE=true
+PIPECAT_ALLOWED_ORIGINS=https://YOUR-FRONTEND.up.railway.app
+```
+
+Frontend build variable:
+
+```text
+VITE_AGENT_URL=https://YOUR-BACKEND.up.railway.app
+```
+
+Generate a public domain for both services. Do not set `PORT`; Railway supplies it.
+
 ## Cost display
 
 Pipecat forwards Anthropic's reported input/output token usage and speech usage to the browser. The UI calculates:
