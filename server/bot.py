@@ -19,6 +19,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.anthropic.llm import AnthropicLLMService
+from pipecat.services.deepgram.flux.tts import DeepgramFluxTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.llm_service import FunctionCallParams
@@ -62,6 +63,8 @@ VOICE_OPTIONS = {
     "aura-2-thalia-en",
     "aura-2-orion-en",
     "aura-2-asteria-en",
+    "flux-haley-en",
+    "flux-paige-en",
 }
 MODEL_OPTIONS = {
     "claude-sonnet-4-6",
@@ -244,9 +247,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info("Starting the Roadside Towing agent in safe test mode")
 
     stt = DeepgramSTTService(api_key=os.environ["DEEPGRAM_API_KEY"])
-    requested_voice = (
-        runner_args.body.get("voice") if isinstance(runner_args.body, dict) else None
-    )
     raw_request_body = runner_args.body if isinstance(runner_args.body, dict) else {}
     nested_request_data = raw_request_body.get("requestData")
     request_body = (
@@ -254,6 +254,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         if isinstance(nested_request_data, dict)
         else raw_request_body
     )
+    requested_voice = request_body.get("voice")
     # This lab is intentionally scoped to Emily's outbound confirmation agent.
     mode = "outbound"
     is_outbound = True
@@ -279,10 +280,16 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         "DEEPGRAM_VOICE", "aura-2-luna-en"
     )
     logger.info(f"Using test voice: {voice}")
-    tts = DeepgramTTSService(
-        api_key=os.environ["DEEPGRAM_API_KEY"],
-        settings=DeepgramTTSService.Settings(voice=voice),
-    )
+    if voice.startswith("flux-"):
+        tts = DeepgramFluxTTSService(
+            api_key=os.environ["DEEPGRAM_API_KEY"],
+            settings=DeepgramFluxTTSService.Settings(voice=voice),
+        )
+    else:
+        tts = DeepgramTTSService(
+            api_key=os.environ["DEEPGRAM_API_KEY"],
+            settings=DeepgramTTSService.Settings(voice=voice),
+        )
     llm = AnthropicLLMService(
         api_key=os.environ["ANTHROPIC_API_KEY"],
         settings=AnthropicLLMService.Settings(

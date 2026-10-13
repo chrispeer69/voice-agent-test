@@ -18,6 +18,8 @@ const voices = [
   ["aura-2-thalia-en", "Thalia", "Confident, direct"],
   ["aura-2-orion-en", "Orion", "Male, approachable"],
   ["aura-2-asteria-en", "Asteria", "Female, expressive"],
+  ["flux-haley-en", "Haley (Flux)", "American female, calm and professional"],
+  ["flux-paige-en", "Paige (Flux)", "American female, caring and comfortable"],
 ];
 
 const app = document.querySelector<HTMLDivElement>("#app");
