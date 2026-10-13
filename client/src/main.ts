@@ -11,7 +11,6 @@ const productionScenarios:ProductionScenario[]=[
  {key:"residence",label:"Residence",decision:"No flip pitch",offerPolicy:"Confirmation + app close",issue:"Check-engine light and loss of power",destination:"Customer’s home",partner:"None"},
  {key:"unknown",label:"Unknown destination",decision:"No flip pitch",offerPolicy:"Confirmation + app close",issue:"Check-engine light and loss of power",destination:"Destination on file",partner:"None"},
  {key:"our_shop",label:"Our shop",decision:"No flip needed",offerPolicy:"VIP welcome",issue:"Check-engine light and loss of power",destination:"Wayne's Westerville",partner:"Already our shop"},
- {key:"aaa_branded",label:"AAA-branded destination",decision:"No flip — AAA rule",offerPolicy:"Confirmation + app close",issue:"Check-engine light and loss of power",destination:"AAA Car Care",partner:"Protected destination"},
 ];
 const voices = [
   ["aura-2-luna-en", "Luna", "Warm, conversational"],
