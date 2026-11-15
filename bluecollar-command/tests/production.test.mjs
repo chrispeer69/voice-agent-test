@@ -1,14 +1,13 @@
-import { readFileSync, writeFileSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { test, after } from 'node:test';
 import ts from 'typescript';
 
 const directory = mkdtempSync(join(tmpdir(), 'planner-tests-'));
-symlinkSync(fileURLToPath(new URL('../node_modules', import.meta.url)), join(directory, 'node_modules'), 'dir');
 process.env.PLANNER_DATA_DIR = join(directory, 'data');
 process.env.GHL_PRIVATE_INTEGRATION_TOKEN = 'test-token';
 process.env.GHL_LOCATION_ID = 'test-location';
@@ -65,7 +64,7 @@ test('GHL client reaches real transport even when Emily SAFE_TEST_MODE is true, 
 });
 test('account reads return actual GHL results and post lists use the documented POST endpoint', async () => {
   assert.equal((await api.fetchSocialAccounts()).accounts.length, 1);
-  await updateStore(s => { s.accountBrands[account.id] = 'convini'; });
+  updateStore(s => { s.accountBrands[account.id] = 'convini'; });
   const posts = await api.fetchGhlPosts();
   assert.equal(posts[0].brandId, 'convini'); assert.equal(posts[0].brandUnassigned, false);
   const request = calls.find(c => c.url.pathname.endsWith('/posts/list'));
@@ -79,9 +78,9 @@ test('brand agent caching never reuses the other brand agent URL', async () => {
 test('drafts and sessions survive a separate process; failed transactions roll back', async () => {
   const post=makePost('persist'); await api.savePost(post);
   await api.saveSession({executionId:'persist-session',brandId:'convini',turns:[],createdAt:post.createdAt});
-  await assert.rejects(updateStore(s => { s.posts=[]; throw new Error('rollback'); }), /rollback/);
-  assert.ok((await store()).posts.some(p=>p.id==='persist'));
-  const child=spawnSync(process.execPath,['--input-type=module','-e',`import {store} from ${JSON.stringify(pathToFileURL(join(directory,'marketing-store.server.mjs')).href)};const s=await store();if(!s.posts.some(p=>p.id==='persist')||!s.sessions.has('persist-session'))process.exit(1);`],{env:process.env,encoding:'utf8'});
+  assert.throws(() => updateStore(s => { s.posts=[]; throw new Error('rollback'); }), /rollback/);
+  assert.ok(store().posts.some(p=>p.id==='persist'));
+  const child=spawnSync(process.execPath,['--input-type=module','-e',`import {store} from ${JSON.stringify(pathToFileURL(join(directory,'marketing-store.server.mjs')).href)};const s=store();if(!s.posts.some(p=>p.id==='persist')||!s.sessions.has('persist-session'))process.exit(1);`],{env:process.env,encoding:'utf8'});
   assert.equal(child.status,0,child.stderr);
 });
 test('publishing sends published, parses nested IDs, and does not falsely report processing as published', async () => {
@@ -146,19 +145,19 @@ test('analytics uses profile IDs and comments use native origin IDs', async () =
 });
 
 test('subaccount comments include unassigned profiles while brand scopes exclude them', async () => {
-  await updateStore(s => { delete s.accountBrands[account.id]; });
+  updateStore(s => { delete s.accountBrands[account.id]; });
   try {
     assert.equal((await api.listComments())[0].id, 'comment-id');
     assert.equal((await api.listComments('convini')).length, 0);
     assert.equal((await api.listComments('ustow')).length, 0);
-  } finally { await updateStore(s => { s.accountBrands[account.id] = 'convini'; }); }
+  } finally { updateStore(s => { s.accountBrands[account.id] = 'convini'; }); }
 });
 
 test('brand content guidance persists separately for Convini and US Tow', async () => {
-  await updateStore(s => {
+  updateStore(s => {
     s.brandProfiles.convini = { audience: 'Local teams', tone: 'Helpful', businessDetails: 'Verified example', defaultCta: 'Learn more', avoid: 'Unverified claims' };
     s.brandProfiles.ustow = { audience: 'Tow operators', tone: 'Direct', businessDetails: '', defaultCta: 'Request a demo', avoid: '' };
   });
-  assert.equal((await store()).brandProfiles.convini?.audience, 'Local teams');
-  assert.equal((await store()).brandProfiles.ustow?.audience, 'Tow operators');
+  assert.equal(store().brandProfiles.convini?.audience, 'Local teams');
+  assert.equal(store().brandProfiles.ustow?.audience, 'Tow operators');
 });

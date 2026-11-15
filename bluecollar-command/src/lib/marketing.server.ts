@@ -227,7 +227,7 @@ async function createPostForAccounts(post: SocialPost, status: "scheduled" | "pu
     try {
       const payload = buildPostPayload(post, accountId, platform, status, userId);
       const fingerprint = JSON.stringify(payload);
-      const previous = await updateStore(s => {
+      const previous = updateStore(s => {
         const prior = s.deliveries[key];
         if (prior?.state === "pending" || prior?.state === "uncertain") {
           throw new Error("A previous request is pending or its outcome is unknown. Check this post in GHL before retrying.");
@@ -250,16 +250,16 @@ async function createPostForAccounts(post: SocialPost, status: "scheduled" | "pu
       });
       if (!response.ok) {
         const body = await response.text();
-        await updateStore(s => { s.deliveries[key]!.state = response.status >= 500 ? "uncertain" : "failed"; });
+        updateStore(s => { s.deliveries[key]!.state = response.status >= 500 ? "uncertain" : "failed"; });
         reserved = false;
         throw new Error(`GHL ${response.status}: ${body.slice(0, 200)}`);
       }
       const written = parsePostWriteResponse(await response.json());
-      await updateStore(s => { s.deliveries[key] = { state: "complete", fingerprint, remoteId: written.id, status: written.status }; });
+      updateStore(s => { s.deliveries[key] = { state: "complete", fingerprint, remoteId: written.id, status: written.status }; });
       reserved = false;
       results.push({ accountId, platform, ok: true, ghlPostId: written.id, status: written.status });
     } catch (error) {
-      if (reserved) await updateStore(s => { s.deliveries[key]!.state = "uncertain"; });
+      if (reserved) updateStore(s => { s.deliveries[key]!.state = "uncertain"; });
       results.push({ accountId, platform, ok: false, error: error instanceof Error ? error.message : "GHL request failed" });
     }
   }
@@ -308,7 +308,7 @@ export async function fetchGhlPosts(): Promise<SocialPost[]> {
   if (!raw.length) return [];
 
   const accts = await accountsCache();
-  const localState = await store();
+  const localState = store();
   const out: SocialPost[] = [];
   for (const item of raw) {
     const p = item as Record<string, unknown>;
@@ -415,7 +415,7 @@ export async function replyGhlComment(commentId: string, text: string, platform:
 export async function fetchGhlStats(brandId?: BrandId): Promise<AnalyticsSummary[]> {
   await requireSession();
   const accounts = await accountsCache();
-  const assignments = (await store()).accountBrands;
+  const assignments = store().accountBrands;
   const out: AnalyticsSummary[] = [];
   for (const brand of (brandId ? [brandId] : ["convini", "ustow"]) as BrandId[]) {
     const selected = accounts.filter(a => assignments[a.id] === brand && a.profileId);
@@ -477,7 +477,7 @@ export { parseStructuredCaption, validateCaption } from "./caption-clean.server"
 
 export async function listPosts(brandId?: BrandId): Promise<SocialPost[]> {
   await requireSession();
-  const s = await store();
+  const s = store();
   const local = brandId ? s.posts.filter((p) => p.brandId === brandId) : s.posts;
   const accts = await accountsCache();
 
@@ -503,7 +503,7 @@ export async function listPosts(brandId?: BrandId): Promise<SocialPost[]> {
 
 export async function getPost(id: string): Promise<SocialPost | undefined> {
   await requireSession();
-  const p = (await store()).posts.find((x) => x.id === id) ?? (id.startsWith("ghl_") ? (await fetchGhlPosts()).find(x => x.id === id) : undefined);
+  const p = store().posts.find((x) => x.id === id) ?? (id.startsWith("ghl_") ? (await fetchGhlPosts()).find(x => x.id === id) : undefined);
   if (!p) return undefined;
   const accts = await accountsCache();
   return {
@@ -524,7 +524,7 @@ export async function savePost(post: SocialPost): Promise<SocialPost> {
     .filter((x): x is Platform => !!x);
   const normalized = { ...post, platforms: platforms.length ? platforms : post.platforms };
   const updated = { ...normalized, updatedAt: new Date().toISOString() };
-  await updateStore(s => {
+  updateStore(s => {
     const idx = s.posts.findIndex(p => p.id === updated.id);
     if (idx >= 0) s.posts[idx] = updated;
     else s.posts.push({ ...updated, createdAt: updated.createdAt || updated.updatedAt });
@@ -534,7 +534,7 @@ export async function savePost(post: SocialPost): Promise<SocialPost> {
 
 export async function deletePost(id: string): Promise<boolean> {
   await requireSession();
-  return await updateStore(s => {
+  return updateStore(s => {
     const idx = s.posts.findIndex(p => p.id === id);
     if (idx < 0) return false;
     s.posts.splice(idx, 1);
@@ -544,13 +544,13 @@ export async function deletePost(id: string): Promise<boolean> {
 
 export async function listCampaigns(brandId?: BrandId): Promise<Campaign[]> {
   await requireSession();
-  const s = await store();
+  const s = store();
   return brandId ? s.campaigns.filter((c) => c.brandId === brandId) : s.campaigns;
 }
 
 export async function saveCampaign(campaign: Campaign): Promise<Campaign> {
   await requireSession();
-  await updateStore(s => {
+  updateStore(s => {
     const idx = s.campaigns.findIndex(c => c.id === campaign.id);
     if (idx >= 0) s.campaigns[idx] = campaign;
     else s.campaigns.push(campaign);
@@ -562,7 +562,7 @@ export async function listComments(brandId?: BrandId, platform?: Platform): Prom
   await requireSession();
   const posts = (await fetchGhlPosts()).filter(p => !brandId || (!p.brandUnassigned && p.brandId === brandId));
   const platforms = [...new Set(posts.flatMap(p => p.platforms))].filter(p => (!platform || p === platform) && ["facebook", "instagram", "linkedin"].includes(p));
-  const local = (await store()).comments;
+  const local = store().comments;
   const out: Comment[] = [];
   for (const network of platforms) {
     const rows = await readComments(network);
@@ -580,7 +580,7 @@ export async function listComments(brandId?: BrandId, platform?: Platform): Prom
 
 export async function saveComment(comment: Comment): Promise<Comment> {
   await requireSession();
-  await updateStore(s => {
+  updateStore(s => {
     const idx = s.comments.findIndex(c => c.id === comment.id);
     if (idx >= 0) s.comments[idx] = comment;
     else s.comments.push(comment);
@@ -590,12 +590,12 @@ export async function saveComment(comment: Comment): Promise<Comment> {
 
 export async function getSession(executionId: string): Promise<AgentSessionLike | undefined> {
   await requireSession();
-  return (await store()).sessions.get(executionId);
+  return store().sessions.get(executionId);
 }
 
 export async function saveSession(session: AgentSessionLike): Promise<AgentSessionLike> {
   await requireSession();
-  await updateStore(s => { s.sessions.set(session.executionId, session); });
+  updateStore(s => { s.sessions.set(session.executionId, session); });
   return session;
 }
 
@@ -603,7 +603,7 @@ export async function listRecommendations(
   brandId?: BrandId,
 ): Promise<import("./types").AnalyticsRecommendation[]> {
   await requireSession();
-  const s = await store();
+  const s = store();
   return brandId ? s.recommendations.filter((r) => r.brandId === brandId) : s.recommendations;
 }
 

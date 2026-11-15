@@ -120,7 +120,7 @@ export const getApprovers = createServerFn({ method: "GET" }).handler(async () =
 
 export const getAccountBrands = createServerFn({ method: "GET" }).handler(async () => {
   await requireSession();
-  return (await store()).accountBrands;
+  return store().accountBrands;
 });
 
 const profileSchema = z.object({
@@ -145,14 +145,14 @@ export const getBrandSetup = createServerFn({ method: "GET" })
           knowledgeBaseIds: Array.isArray(raw.knowledgeBaseIds) ? raw.knowledgeBaseIds.map(String) : [] };
       }
     }
-    return { profile: (await store()).brandProfiles[data.brandId] || { audience: "", tone: "", businessDetails: "", defaultCta: "", avoid: "" }, agent };
+    return { profile: store().brandProfiles[data.brandId] || { audience: "", tone: "", businessDetails: "", defaultCta: "", avoid: "" }, agent };
   });
 
 export const saveBrandSetup = createServerFn({ method: "POST" })
   .validator((data: { brandId: BrandId; profile: z.infer<typeof profileSchema> }) => z.object({ brandId: brandIdSchema, profile: profileSchema }).parse(data))
   .handler(async ({ data }) => {
     await requireSession();
-    await updateStore(s => { s.brandProfiles[data.brandId] = data.profile; });
+    updateStore(s => { s.brandProfiles[data.brandId] = data.profile; });
     return { ok: true };
   });
 
@@ -163,7 +163,7 @@ export const setAccountBrand = createServerFn({ method: "POST" })
     const { accounts, error } = await fetchSocialAccounts();
     if (error) throw new Error(error);
     if (!accounts.some(a => a.id === data.accountId)) throw new Error("Account is not connected.");
-    await updateStore(s => {
+    updateStore(s => {
       if (data.brandId) s.accountBrands[data.accountId] = data.brandId;
       else delete s.accountBrands[data.accountId];
     });
@@ -436,7 +436,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
     // JSON object so the caption never gets mixed with the prompt instructions
     // or conversational chatter. Validate the output and retry once if the
     // agent returns garbage (instruction echo, chatter, or invalid JSON).
-    const profile = (await store()).brandProfiles[data.brandId];
+    const profile = store().brandProfiles[data.brandId];
     const guidance = profile ? [
       profile.audience && `Audience: ${profile.audience}`,
       profile.tone && `Tone: ${profile.tone}`,
