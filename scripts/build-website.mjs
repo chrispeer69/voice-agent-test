@@ -1,0 +1,10 @@
+import { execFileSync } from "node:child_process";
+import { cpSync, rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+const root = fileURLToPath(new URL("../", import.meta.url));
+const run = (args, cwd) => execFileSync("npm", args, { cwd, stdio: "inherit", env: process.env });
+run(["run", "build", "--", "--base=/voice-lab/"], `${root}/client`);
+const destination = `${root}/bluecollar-command/public/voice-lab`;
+rmSync(destination, { recursive: true, force: true });
+cpSync(`${root}/client/dist`, destination, { recursive: true });
+run(["run", "build"], `${root}/bluecollar-command`);

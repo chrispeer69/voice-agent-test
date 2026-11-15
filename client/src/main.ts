@@ -2,6 +2,7 @@ import { createIcons, Check, Mic, MicOff, Phone, PhoneOff, RotateCcw, ShieldChec
 import { type BotLLMTextData, type Participant, PipecatClient, type TranscriptData, type TransportState } from "@pipecat-ai/client-js";
 import { WebSocketTransport } from "@pipecat-ai/websocket-transport";
 import "./styles.css";
+import { setupSocialPlanner } from "./social-planner";
 
 type Speaker = "caller" | "agent" | "system";
 type ProductionScenario={key:string;label:string;decision:string;offerPolicy:string;issue:string;destination:string;partner:string};
@@ -44,6 +45,7 @@ app.innerHTML = `
   </section>
   <section class="history-card"><div><span>Saved comparisons</span><button id="clear-history">Clear history</button></div><div class="history-wrap"><table><thead><tr><th>Date</th><th>Direction / route</th><th>Model</th><th>Voice</th><th>Duration</th><th>Latency</th><th>Cost</th><th>Result</th><th>Variant</th></tr></thead><tbody id="history"></tbody></table></div><p id="history-empty">No saved runs yet. Complete a call, score it, and save it.</p></section>
 </main>`;
+setupSocialPlanner(app.querySelector<HTMLElement>(".shell")!);
 createIcons({ icons: { Check, Mic, MicOff, Phone, PhoneOff, RotateCcw, ShieldCheck, X } });
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -94,8 +96,8 @@ byId("save-run").addEventListener("click",()=>{const run:SavedRun={id:crypto.ran
 byId("clear-history").addEventListener("click",()=>{localStorage.removeItem(historyKey);renderHistory()});
 renderHistory();
 function updateEditorCounts(){byId("agent-count").textContent=`${agentPrompt.value.length.toLocaleString()} characters`;byId("script-count").textContent=`${scriptBody.value.length.toLocaleString()} characters`;byId("builder-count").textContent=`${builderConfig.value.length.toLocaleString()} characters`}
-async function loadProductionCopies(){const [prompt,script,builder]=await Promise.all([fetch("/emily-outbound.txt").then(r=>r.text()),fetch(`/scenario-${activeScenarioKey}.txt`).then(r=>r.text()),fetch("/tenant-script-builder-config.txt").then(r=>r.text())]);productionPrompt=prompt;productionScript=script;productionBuilder=builder;agentPrompt.value=prompt;scriptBody.value=script;builderConfig.value=builder;updateEditorCounts()}
-async function selectProductionScenario(key:string){const selected=productionScenarios.find(s=>s.key===key);if(!selected)return;activeScenarioKey=key;productionScript=await fetch(`/scenario-${key}.txt`).then(r=>r.text());scriptBody.value=productionScript;byId("route-decision").textContent=selected.decision;byId("route-policy").textContent=selected.offerPolicy;byId("payload-issue").textContent=selected.issue;byId("payload-destination").textContent=selected.destination;byId("payload-partner").textContent=selected.partner;updateEditorCounts()}
+async function loadProductionCopies(){const [prompt,script,builder]=await Promise.all([fetch(`${import.meta.env.BASE_URL}emily-outbound.txt`).then(r=>r.text()),fetch(`${import.meta.env.BASE_URL}scenario-${activeScenarioKey}.txt`).then(r=>r.text()),fetch(`${import.meta.env.BASE_URL}tenant-script-builder-config.txt`).then(r=>r.text())]);productionPrompt=prompt;productionScript=script;productionBuilder=builder;agentPrompt.value=prompt;scriptBody.value=script;builderConfig.value=builder;updateEditorCounts()}
+async function selectProductionScenario(key:string){const selected=productionScenarios.find(s=>s.key===key);if(!selected)return;activeScenarioKey=key;productionScript=await fetch(`${import.meta.env.BASE_URL}scenario-${key}.txt`).then(r=>r.text());scriptBody.value=productionScript;byId("route-decision").textContent=selected.decision;byId("route-policy").textContent=selected.offerPolicy;byId("payload-issue").textContent=selected.issue;byId("payload-destination").textContent=selected.destination;byId("payload-partner").textContent=selected.partner;updateEditorCounts()}
 scenarioSelect.addEventListener("change",()=>void selectProductionScenario(scenarioSelect.value));
 void loadProductionCopies();
 agentPrompt.addEventListener("input",updateEditorCounts);scriptBody.addEventListener("input",updateEditorCounts);builderConfig.addEventListener("input",updateEditorCounts);

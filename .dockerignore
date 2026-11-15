@@ -1,0 +1,17 @@
+.git
+**/.git
+**/node_modules
+**/.env
+**/.env.*
+**/.venv
+**/__pycache__
+**/.output
+**/dist
+bluecollar-command/public/voice-lab
+*.zip
+
+**/.data
+**/*.sqlite*
+
+.local-tools
+bluecollaragents-target

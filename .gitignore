@@ -26,3 +26,21 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+bluecollar-command/public/voice-lab/
+bluecollar-command.zip
+
+**/.data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Isolated third-party tools, configs, and generated media
+.local-tools/
+
+# Local inspection clone, unrelated to this repository's deployment
+/bluecollaragents-target/
+/aivoiceagents.code-workspace
+/bluecollar-command/.vibe/
+/bluecollar-command/bun.lock
+/bluecollar-command/bunfig.toml

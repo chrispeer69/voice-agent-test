@@ -1,0 +1,163 @@
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { test, after } from 'node:test';
+import ts from 'typescript';
+
+const directory = mkdtempSync(join(tmpdir(), 'planner-tests-'));
+process.env.PLANNER_DATA_DIR = join(directory, 'data');
+process.env.GHL_PRIVATE_INTEGRATION_TOKEN = 'test-token';
+process.env.GHL_LOCATION_ID = 'test-location';
+process.env.CONVINI_AGENT_ID = 'convini-agent';
+process.env.USTOW_AGENT_ID = 'ustow-agent';
+const modules = ['types','marketing-store.server','ghl-client.server','social-post-contract','caption-clean.server','agent.server','marketing.server'];
+for (const name of modules) {
+  const source = readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/from (["'])\.\/([^"']+)\1/g, 'from "./$2.mjs"');
+  writeFileSync(join(directory, name + '.mjs'), compiled);
+}
+// Request-context auth is independently exercised by HTTP smoke tests.
+writeFileSync(join(directory, 'auth.server.mjs'), 'export async function requireSession() { if (globalThis.denyTestSession) throw new Error("Unauthorized"); }');
+const load = name => import(pathToFileURL(join(directory, name + '.mjs')));
+const { ghlFetch } = await load('ghl-client.server');
+const { store, updateStore } = await load('marketing-store.server');
+const api = await load('marketing.server');
+const { runAgentTurn } = await load('agent.server');
+const contract = await load('social-post-contract');
+const originalFetch = globalThis.fetch;
+after(() => { globalThis.fetch = originalFetch; rmSync(directory, { recursive: true, force: true }); });
+const account = { id: 'facebook-account', platform: 'facebook', name: 'Test Page', active: true, originId: 'native-page', profileId: 'profile-record' };
+let calls = [];
+let writeMode = 'success';
+globalThis.fetch = async (input, init = {}) => {
+  const url = new URL(input); calls.push({ url, init });
+  if (url.pathname.endsWith('/accounts')) return Response.json({ results: { accounts: [account] } });
+  if (url.pathname === '/users/') return Response.json({ users: [{ id: 'test-user' }] });
+  if (url.pathname.includes('/execute')) return Response.json({ success: true, sessionId: 'session', finalText: url.pathname.includes('convini-agent') ? 'Convini reply' : 'US Tow reply' });
+  if (url.pathname.endsWith('/posts/list')) return Response.json({ results: { posts: [{ _id: 'live-post', accountIds: [account.id], summary: 'Existing post', status: 'published', publishedAt: '2026-01-01T00:00:00Z', createdAt:'2026-01-01T00:00:00Z' }], count: 1 } });
+  if (url.pathname.endsWith('/statistics')) return Response.json({ results: { breakdowns: {
+    reach: { platforms: { facebook: { value: 12 } } },
+    engagement: { facebook: { likes: 3, comments: 2, shares: 1 } },
+    posts: { platforms: { facebook: { value: 1 } } },
+  } } });
+  if (url.pathname.endsWith('/comments/facebook/list')) return Response.json({results:{comments:[{_id:'comment-id',postId:'live-post',platform:'facebook',content:'A comment',author:{name:'Test'},createdAt:'2026-01-01T00:00:00Z'}],meta:{hasMore:false}}});
+  if (url.pathname.endsWith('/comments/facebook')) return Response.json({success:true});
+  if (url.pathname.includes('/posts')) {
+    if (writeMode === 'network-error') throw new Error('Connection lost');
+    if (writeMode === 'reject') return Response.json({ message: 'Invalid media' }, { status: 422 });
+    const body = JSON.parse(init.body);
+    return Response.json({ success: true, results: { post: { _id: 'remote-post', status: body.status === 'published' ? 'in_progress' : body.status } } });
+  }
+  throw new Error('Unexpected request: ' + url.pathname);
+};
+const makePost = id => ({ id, brandId: 'convini', campaignId: null, type: 'custom', accountIds: [account.id], platforms:['facebook'], objective:'awareness', format:'text', title:'Test', body:'Test caption', media:[], commentToDm:false, status:'approved', createdAt:'2026-01-01T00:00:00Z', updatedAt:'2026-01-01T00:00:00Z' });
+
+test('GHL client reaches real transport even when Emily SAFE_TEST_MODE is true, and rejects other origins', async () => {
+  process.env.SAFE_TEST_MODE = 'true';
+  const response = await ghlFetch('https://services.leadconnectorhq.com/social-media-posting/test/accounts', { headers: { Authorization: 'Bearer test-token' } });
+  assert.equal((await response.json()).results.accounts.length, 1);
+  assert.equal(calls.at(-1).init.redirect, 'error');
+  await assert.rejects(ghlFetch('https://other.invalid/'), /official API/);
+});
+test('account reads return actual GHL results and post lists use the documented POST endpoint', async () => {
+  assert.equal((await api.fetchSocialAccounts()).accounts.length, 1);
+  updateStore(s => { s.accountBrands[account.id] = 'convini'; });
+  const posts = await api.fetchGhlPosts();
+  assert.equal(posts[0].brandId, 'convini'); assert.equal(posts[0].brandUnassigned, false);
+  const request = calls.find(c => c.url.pathname.endsWith('/posts/list'));
+  assert.equal(request.init.method, 'POST'); assert.equal(JSON.parse(request.init.body).limit, '100');
+  assert.equal(request.init.headers.Version, 'v3');
+});
+test('brand agent caching never reuses the other brand agent URL', async () => {
+  assert.equal((await runAgentTurn('convini','test')).reply, 'Convini reply');
+  assert.equal((await runAgentTurn('ustow','test')).reply, 'US Tow reply');
+});
+test('drafts and sessions survive a separate process; failed transactions roll back', async () => {
+  const post=makePost('persist'); await api.savePost(post);
+  await api.saveSession({executionId:'persist-session',brandId:'convini',turns:[],createdAt:post.createdAt});
+  assert.throws(() => updateStore(s => { s.posts=[]; throw new Error('rollback'); }), /rollback/);
+  assert.ok(store().posts.some(p=>p.id==='persist'));
+  const child=spawnSync(process.execPath,['--input-type=module','-e',`import {store} from ${JSON.stringify(pathToFileURL(join(directory,'marketing-store.server.mjs')).href)};const s=store();if(!s.posts.some(p=>p.id==='persist')||!s.sessions.has('persist-session'))process.exit(1);`],{env:process.env,encoding:'utf8'});
+  assert.equal(child.status,0,child.stderr);
+});
+test('publishing sends published, parses nested IDs, and does not falsely report processing as published', async () => {
+  const post=makePost('publish');
+  const results=await api.publishPostViaGhl(post);
+  assert.equal(results[0].ghlPostId,'remote-post'); assert.equal(results[0].status,'publishing');
+  const request=calls.findLast(c=>c.url.pathname.endsWith('/posts'));
+  assert.equal(JSON.parse(request.init.body).status,'published');
+  const before=calls.filter(c=>c.url.pathname.includes('/posts')&&!c.url.pathname.endsWith('/list')).length;
+  await api.publishPostViaGhl(post);
+  const after=calls.filter(c=>c.url.pathname.includes('/posts')&&!c.url.pathname.endsWith('/list')).length;
+  assert.equal(after,before,'Repeated request should reuse persisted result');
+});
+test('rescheduling updates an existing remote post instead of creating a duplicate', async () => {
+  const post={...makePost('reschedule'),scheduledAt:new Date(Date.now()+86400000).toISOString()};
+  await api.schedulePostViaGhl(post);
+  post.scheduledAt=new Date(Date.now()+172800000).toISOString();
+  await api.schedulePostViaGhl(post);
+  assert.equal(calls.at(-1).init.method,'PUT');
+  assert.ok(calls.at(-1).url.pathname.endsWith('/posts/remote-post'));
+});
+test('missing accounts and past dates do not publish', async () => {
+  await assert.rejects(api.publishPostViaGhl({...makePost('empty'),accountIds:[]}),/Select at least one/);
+  const result=await api.schedulePostViaGhl({...makePost('past'),scheduledAt:'2020-01-01T00:00:00Z'});
+  assert.equal(result[0].ok,false);assert.match(result[0].error,/future date/);
+});
+test('uncertain network outcomes block automatic retries to avoid duplicate posts', async () => {
+  writeMode='network-error';
+  const post=makePost('uncertain');
+  assert.equal((await api.publishPostViaGhl(post))[0].ok,false);
+  writeMode='success';
+  const count=calls.length;
+  const retry=await api.publishPostViaGhl(post);
+  assert.equal(retry[0].ok,false);assert.match(retry[0].error,/outcome is unknown/);assert.equal(calls.length,count);
+});
+test('HTTP rejections are surfaced and may be retried after content correction', async () => {
+  writeMode='reject'; const post=makePost('reject');
+  assert.equal((await api.publishPostViaGhl(post))[0].ok,false);
+  writeMode='success'; assert.equal((await api.publishPostViaGhl(post))[0].ok,true);
+});
+test('publication cannot proceed without a session', async () => {
+  globalThis.denyTestSession=true;
+  await assert.rejects(api.publishPostViaGhl(makePost('unauthorized')),/Unauthorized/);
+  globalThis.denyTestSession=false;
+});
+test('response and media validation reject false confirmations and unsupported media', () => {
+  assert.throws(()=>contract.parsePostWriteResponse({success:true}),/post ID/);
+  assert.throws(()=>contract.parsePostWriteResponse({success:false}),/rejected/);
+  assert.throws(()=>contract.buildPostPayload(makePost('media'),account.id,'instagram','published','user'),/requires an image/);
+  assert.equal(contract.normalizePostStatus('pending'),'publishing');
+});
+
+test('analytics uses profile IDs and comments use native origin IDs', async () => {
+  const stats=await api.fetchGhlStats('convini');
+  assert.equal(stats[0].reach,12);assert.equal(stats[0].engagement,6);
+  assert.deepEqual(JSON.parse(calls.findLast(c=>c.url.pathname.endsWith('/statistics')).init.body).profileIds,['profile-record']);
+  const comments=await api.listComments('convini');assert.equal(comments[0].id,'comment-id');
+  assert.deepEqual(JSON.parse(calls.findLast(c=>c.url.pathname.endsWith('/comments/facebook/list')).init.body).originIds,['native-page']);
+  await api.replyGhlComment('comment-id','User-approved reply','facebook');
+  const reply=JSON.parse(calls.at(-1).init.body);
+  assert.equal(reply.parentId,'comment-id');assert.equal(reply.isParentThread,false);
+});
+
+test('subaccount comments include unassigned profiles while brand scopes exclude them', async () => {
+  updateStore(s => { delete s.accountBrands[account.id]; });
+  try {
+    assert.equal((await api.listComments())[0].id, 'comment-id');
+    assert.equal((await api.listComments('convini')).length, 0);
+    assert.equal((await api.listComments('ustow')).length, 0);
+  } finally { updateStore(s => { s.accountBrands[account.id] = 'convini'; }); }
+});
+
+test('brand content guidance persists separately for Convini and US Tow', async () => {
+  updateStore(s => {
+    s.brandProfiles.convini = { audience: 'Local teams', tone: 'Helpful', businessDetails: 'Verified example', defaultCta: 'Learn more', avoid: 'Unverified claims' };
+    s.brandProfiles.ustow = { audience: 'Tow operators', tone: 'Direct', businessDetails: '', defaultCta: 'Request a demo', avoid: '' };
+  });
+  assert.equal(store().brandProfiles.convini?.audience, 'Local teams');
+  assert.equal(store().brandProfiles.ustow?.audience, 'Tow operators');
+});
