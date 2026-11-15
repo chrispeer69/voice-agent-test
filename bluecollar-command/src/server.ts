@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { store } from "./lib/marketing-store.server";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -46,6 +47,15 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    if (request.method === "GET" && new URL(request.url).pathname === "/healthz") {
+      try {
+        await store();
+        return new Response("ok", { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+      } catch (error) {
+        console.error("Planner database health check failed", error);
+        return new Response("unavailable", { status: 503, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+      }
+    }
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

@@ -130,7 +130,7 @@ Railway detects the root `Dockerfile`, builds the Social Planner and Voice Lab,
 and starts the planner's Node server. Keep the existing Python voice backend as
 a separate service with Root Directory `/server`; do not replace it. Leave the
 old `/client` frontend service running until this new website passes checks.
-In the website service's Settings, set the healthcheck path to `/login` and
+In the website service's Settings, set the healthcheck path to `/healthz` and
 generate a public domain. Do not override the Dockerfile start command.
 
 Website variables:
@@ -142,15 +142,15 @@ Website variables:
 - `GHL_TIMEZONE=America/New_York`.
 - `CONVINI_AGENT_ID=33dda291-e410-4dab-a358-31ef98c2fed8`.
 - `USTOW_AGENT_ID=b3480481-37d8-48da-8ebb-18e71a80a8f9`.
-- `PLANNER_DATA_DIR=/app/data`.
+- `DATABASE_URL=${{Postgres.DATABASE_URL}}`: reference the Railway PostgreSQL service. Use its exact service name if different from `Postgres`.
 - `VITE_AGENT_URL=https://YOUR-VOICE-BACKEND.up.railway.app`: the existing voice backend public URL, supplied at build time. The Docker build fails if omitted.
 - `SAFE_TEST_MODE=true`: Emily remains simulated; this flag does not disable the planner's authorized GHL connection.
 
-Attach a Railway volume to the **website service** at `/app/data` before its
-first deployment. Railway sets `RAILWAY_VOLUME_MOUNT_PATH` automatically; do
-not add it yourself. The planner stores drafts, account assignments, sessions,
-and delivery records in SQLite on that volume. Run one website replica to keep
-those records consistent. PostgreSQL is not needed for this planner.
+Add Railway PostgreSQL to the project before the website's first deployment.
+The website reads its private-network `DATABASE_URL` and creates the planner
+table on first use. Do not attach a separate volume to the website service.
+Railway manages the PostgreSQL service's storage; enable its backups. Local
+development still uses SQLite when `DATABASE_URL` is absent.
 
 Add the new website origin to the voice backend's `PIPECAT_ALLOWED_ORIGINS`.
 Keep `SAFE_TEST_MODE=true` on that backend. Railway supplies `PORT`; do not set
@@ -175,12 +175,11 @@ response, the result is marked uncertain and automatic retry is blocked: check
 GHL before reconciling that delivery. No live posts or replies are sent by tests.
 
 Drafts, campaigns, agent sessions, brand assignments, and delivery outcomes are
-stored transactionally in `planner.sqlite` under `PLANNER_DATA_DIR` (default
-`.data` for local runs). Keep the website at one Railway replica with an attached
-volume and enable volume backups. Startup refuses Railway's ephemeral storage.
-Do not delete the database or copy it while writes are active; use a SQLite
-backup or a stopped-service volume backup. Existing memory-only drafts from the
-old build cannot be recovered automatically after that server stops.
+stored transactionally in Railway PostgreSQL. The planner takes a row lock for
+each update, so concurrent requests do not overwrite each other. Local runs
+without `DATABASE_URL` use `planner.sqlite` under `PLANNER_DATA_DIR` (default
+`.data`). Railway startup refuses ephemeral storage. Existing memory-only drafts
+from the old build cannot be recovered automatically after that server stops.
 
 GHL scopes used: `socialplanner/account.readonly`, `socialplanner/post.readonly`,
 `socialplanner/post.write`, `socialplanner/comments.readonly`,

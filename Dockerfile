@@ -14,7 +14,7 @@ RUN node scripts/build-website.mjs
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production HOST=0.0.0.0 SAFE_TEST_MODE=true PLANNER_DATA_DIR=/app/data
+ENV NODE_ENV=production HOST=0.0.0.0 SAFE_TEST_MODE=true
 COPY --from=build --chown=node:node /app/bluecollar-command/.output ./.output
 COPY --from=build /app/bluecollar-command/scripts/start.mjs ./scripts/start.mjs
 CMD ["node", "scripts/start.mjs"]
