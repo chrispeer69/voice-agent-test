@@ -6,7 +6,7 @@ import { useBrand } from '@/lib/brand-context';
 import { Loader2 } from 'lucide-react';
 import { getSocialAccounts, getAccountBrands, sendAgentMessage, requestMedia, saveDraftPost, approvePost, schedulePost, publishPost, getPlannerTimezone, uploadPlannerPhoto } from '@/lib/marketing.functions';
 import type { SocialPost, MediaItem } from '@/lib/types';
-import { GHL_AGENT_STUDIO_URL } from '@/lib/ghl-links';
+import { AgentPicker } from '@/components/agent-picker';
 import { SimpleAccountPicker } from '@/components/simple-account-picker';
 
 export const Route = createFileRoute('/quick-create')({ component: QuickCreate });
@@ -19,7 +19,7 @@ const purposes: {id:Choice; label:string; cta:string}[] = [
 ];
 const button = 'min-h-14 rounded-xl border border-border bg-white px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:border-primary hover:shadow-md';
 function QuickCreate() {
-  const {brand, brands, setBrandId, refreshAgents, agentsLoading, agentsError} = useBrand();
+  const {brand, agentOptions, setBrandId, refreshAgents, agentsLoading, agentsError} = useBrand();
   const queryClient = useQueryClient();
   const accounts = useQuery({queryKey:['social-accounts'],queryFn:()=>getSocialAccounts()});
   const assignments = useQuery({queryKey:['account-brands'],queryFn:()=>getAccountBrands()});
@@ -84,7 +84,7 @@ function QuickCreate() {
     <div className="mt-7 min-h-[min(650px,calc(100vh-210px))] rounded-[28px] border border-border bg-card p-6 shadow-[0_20px_60px_rgba(23,52,66,0.08)] sm:p-10">
     <p className="mt-7 text-xs font-semibold uppercase tracking-widest text-primary">Step {step} of 7{knowledgeChosen ? ` · ${brand.name}` : ''}</p>
     <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{width:`${step/7*100}%`}} /></div>
-    {step===1&&<section><h1 className="mt-10 text-3xl font-semibold tracking-tight">Which knowledge base should guide this post?</h1><p className="mt-2 text-muted-foreground">Choose the GHL AI agent that knows this business. You can change it for each new post.</p><label htmlFor="quick-create-agent" className="mt-8 block text-sm font-semibold">AI agent<select id="quick-create-agent" className="input mt-2 w-full bg-white" value={knowledgeChosen?brand.id:''} onChange={e=>{const id=e.target.value;if(!id)return;if(brand.id!==id){suggestedIdeas.current=[];setTopic('');}setBrandId(id);setKnowledgeChosen(true);setAccountIds([]);}}><option value="" disabled>Select an agent</option>{brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label><div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"><button type="button" className="text-primary hover:underline disabled:opacity-50" disabled={agentsLoading} onClick={()=>void refreshAgents()}>{agentsLoading?'Refreshing…':'Refresh GHL agents'}</button><a href={GHL_AGENT_STUDIO_URL} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Create an agent in GHL ↗</a></div><p className="mt-2 text-xs text-muted-foreground">Publish a new agent in GHL, then refresh this list.</p>{agentsError&&<p role="alert" className="mt-2 text-sm text-destructive">{agentsError}</p>}</section>}
+    {step===1&&<section><h1 className="mt-10 text-3xl font-semibold tracking-tight">Which knowledge base should guide this post?</h1><p className="mt-2 text-muted-foreground">Choose the GHL AI agent that knows this business. You can change it for each new post.</p><AgentPicker options={agentOptions} selectedId={knowledgeChosen ? brand.id : null} loading={agentsLoading} error={agentsError} onRefresh={() => void refreshAgents()} onSelect={id => { if (brand.id !== id) { suggestedIdeas.current = []; setTopic(''); } setBrandId(id); setKnowledgeChosen(true); setAccountIds([]); }} /></section>}
     {step===2&&<section><h1 className="mt-10 text-3xl font-semibold tracking-tight">What’s the post about?</h1><p className="mt-2 text-muted-foreground">A sentence or two is enough.</p><textarea aria-label="Post topic" className="mt-10 min-h-36 w-full rounded-xl border border-border bg-white p-4 text-base shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Example: show how our team carefully loads a vehicle"/><button type="button" className="mt-3 text-sm text-primary hover:underline disabled:opacity-50" disabled={suggest.isPending} onClick={()=>suggest.mutate()}>{suggest.isPending?'Finding a new idea…':topic?'Suggest another idea':'Suggest an idea'}</button></section>}
     {step===3&&<section><h1 className="mt-10 text-3xl font-semibold tracking-tight">What should people do?</h1><div className="mt-10 grid gap-3 sm:grid-cols-2">{purposes.map(p=><button key={p.id} className={`${button} ${goal===p.id?'border-primary bg-primary/10':''}`} onClick={()=>setGoal(p.id)}>{p.label}</button>)}</div></section>}
     {step===4&&<section><h1 className="mt-10 text-3xl font-semibold tracking-tight">Where should it go?</h1><p className="mt-2 text-muted-foreground">Your usual choices are selected when available. Review them before continuing.</p><div className="mt-10"><SimpleAccountPicker accounts={choices} selectedIds={accountIds} onChange={setAccountIds} loading={accounts.isLoading} error={accounts.error?.message} /></div></section>}
