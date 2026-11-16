@@ -14,7 +14,6 @@ import appCss from "../styles.css?url";
 import { reportVibeError } from "../lib/vibe-error-reporting";
 import { BrandProvider } from "../lib/brand-context";
 import { Sidebar } from "../components/sidebar";
-import { AccountAssignmentNotice } from "../components/account-assignment-notice";
 import { Header } from "../components/header";
 import { checkSession } from "../lib/auth.functions";
 import { Toaster } from "@/components/ui/sonner";
@@ -160,7 +159,6 @@ function RootComponent() {
             {!isGuidedCreate && <Sidebar />}
             <div className="flex min-w-0 flex-1 flex-col">
               <Header />
-              {!isGuidedCreate && <AccountAssignmentNotice />}
               <main className="flex-1 overflow-x-hidden">
                 <Outlet />
               </main>
