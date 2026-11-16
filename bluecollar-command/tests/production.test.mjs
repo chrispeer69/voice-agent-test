@@ -55,6 +55,14 @@ globalThis.fetch = async (input, init = {}) => {
 };
 const makePost = id => ({ id, brandId: 'convini', campaignId: null, type: 'custom', accountIds: [account.id], platforms:['facebook'], objective:'awareness', format:'text', title:'Test', body:'Test caption', media:[], commentToDm:false, status:'approved', createdAt:'2026-01-01T00:00:00Z', updatedAt:'2026-01-01T00:00:00Z' });
 
+test('Google Business Profile standard updates include required details and reject unsupported media', () => {
+  const googlePost = { ...makePost('google'), accountIds: ['google-account'], platforms: ['google'] };
+  const payload = contract.buildPostPayload(googlePost, 'google-account', 'google', 'published', 'user');
+  assert.deepEqual(payload.gmbPostDetails, { gmbEventType: 'STANDARD' });
+  assert.throws(() => contract.buildPostPayload({ ...googlePost, media: [{ id: 'video', url: 'https://example.com/video.mp4', type: 'video' }] }, 'google-account', 'google', 'published', 'user'), /no video/);
+  assert.throws(() => contract.buildPostPayload({ ...googlePost, body: 'x'.repeat(1501) }, 'google-account', 'google', 'published', 'user'), /1,500 characters/);
+});
+
 test('GHL client reaches real transport even when Emily SAFE_TEST_MODE is true, and rejects other origins', async () => {
   process.env.SAFE_TEST_MODE = 'true';
   const response = await ghlFetch('https://services.leadconnectorhq.com/social-media-posting/test/accounts', { headers: { Authorization: 'Bearer test-token' } });

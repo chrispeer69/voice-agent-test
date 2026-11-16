@@ -1,14 +1,12 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, CalendarDays, PenSquare, Layers } from 'lucide-react';
-import { useBrand } from '@/lib/brand-context';
 import { getPosts, getSocialAccounts } from '@/lib/marketing.functions';
 import { StatusBadge } from '@/components/shared';
 
 export const Route = createFileRoute('/')({component:Home,head:()=>({meta:[{title:'Home — Blue Collar AI Social Planner'}]})});
 function Home(){
- const {brand}=useBrand();
- const posts=useQuery({queryKey:['posts',brand.id],queryFn:()=>getPosts({data:{brandId:brand.id}})});
+ const posts=useQuery({queryKey:['posts','all'],queryFn:()=>getPosts({data:{}})});
  const accounts=useQuery({queryKey:['social-accounts'],queryFn:()=>getSocialAccounts()});
  const review=(posts.data??[]).filter(p=>['draft','in_review','failed'].includes(p.status)).slice(0,4);
  const upcoming=(posts.data??[]).filter(p=>p.status==='scheduled').sort((a,b)=>(a.scheduledAt||'').localeCompare(b.scheduledAt||'')).slice(0,4);

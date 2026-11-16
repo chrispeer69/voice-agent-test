@@ -16,6 +16,12 @@ export function buildPostPayload(post: SocialPost, accountId: string, platform: 
   const summary = post.copyByPlatform?.[platform] ?? post.body;
   if (!summary.trim() && !post.media.length) throw new Error('Add content or media before publishing.');
   if (platform === 'instagram' && !post.media.length) throw new Error('Instagram requires an image or video.');
+  if (platform === 'google') {
+    if (summary.length > 1500) throw new Error('Google Business Profile posts must be 1,500 characters or fewer.');
+    if (post.media.length > 1 || post.media.some(item => item.type !== 'image' || !/\.(jpe?g|png)(?:\?|$)/i.test(item.url))) {
+      throw new Error('Google Business Profile supports one JPEG or PNG image and no video.');
+    }
+  }
   const type = ['story', 'reel'].includes(post.format) ? post.format : 'post';
   if (type !== 'post' && !['facebook', 'instagram'].includes(platform)) throw new Error(`${type} is not supported for ${platform}.`);
   if (type === 'reel' && (post.media.length !== 1 || post.media[0]?.type !== 'video')) throw new Error('Reels require exactly one video.');
@@ -29,6 +35,7 @@ export function buildPostPayload(post: SocialPost, accountId: string, platform: 
   const payload: Record<string, unknown> = { accountIds: [accountId], summary, media, status, type, userId };
   if (platform === 'instagram') payload.instagramPostDetails = { type };
   if (platform === 'facebook') payload.facebookPostDetails = { type };
+  if (platform === 'google') payload.gmbPostDetails = { gmbEventType: 'STANDARD' };
   if (status === 'scheduled') {
     const time = Date.parse(post.scheduledAt || '');
     if (!Number.isFinite(time) || time <= Date.now()) throw new Error('Choose a valid future date before scheduling.');

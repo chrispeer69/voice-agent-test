@@ -44,7 +44,7 @@ export const PLATFORMS: { id: Platform; label: string; icon: string }[] = [
   { id: "facebook", label: "Facebook", icon: "facebook" },
   { id: "instagram", label: "Instagram", icon: "instagram" },
   { id: "linkedin", label: "LinkedIn", icon: "linkedin" },
-  { id: "google", label: "Google Business", icon: "google" },
+  { id: "google", label: "Google Business Profile", icon: "google" },
   { id: "twitter", label: "X / Twitter", icon: "twitter" },
 ];
 

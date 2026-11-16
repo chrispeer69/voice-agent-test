@@ -9,13 +9,14 @@ import {
   Users,
   Play,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useBrand } from "@/lib/brand-context";
 import { getSocialAccounts, getApprovers, runAgentDiagnostic, getAccountBrands, setAccountBrand, getBrandSetup, saveBrandSetup } from "@/lib/marketing.functions";
 import { Card, PageHeader, PlatformIcon } from "@/components/shared";
-import { PLATFORMS } from "@/lib/types";
+import { PLATFORMS, type BrandId } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -35,11 +36,11 @@ export const Route = createFileRoute("/settings")({
 });
 
 function SettingsPage() {
-  const { brand, brands, setBrandId } = useBrand();
+  const { brand, brands, setBrandId, refreshAgents, agentsLoading, agentsError } = useBrand();
   const queryClient = useQueryClient();
   const assignmentQuery = useQuery({ queryKey: ["account-brands"], queryFn: () => getAccountBrands() });
   const assign = useMutation({
-    mutationFn: (data: { accountId: string; brandId: "convini" | "ustow" | null }) => setAccountBrand({ data }),
+    mutationFn: (data: { accountId: string; brandId: BrandId | null }) => setAccountBrand({ data }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["account-brands"] }); queryClient.invalidateQueries({ queryKey: ["posts"] }); toast.success("Account brand saved"); },
     onError: (error) => toast.error(error.message),
   });
@@ -61,7 +62,7 @@ function SettingsPage() {
     Record<string, { ok: boolean; reply?: string; error?: string }>
   >({});
 
-  const handleTestAgent = async (brandId: "convini" | "ustow") => {
+  const handleTestAgent = async (brandId: BrandId) => {
     try {
       setTestingBrand(brandId);
       const res = await runTestFn({ data: { brandId } });
@@ -87,11 +88,13 @@ function SettingsPage() {
       <Card className="mt-8">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-primary" />
-          <h2 className="text-base font-semibold text-foreground">Active brand</h2>
+          <h2 className="text-base font-semibold text-foreground">Knowledge base &amp; AI agent</h2>
+          <button type="button" onClick={() => void refreshAgents()} disabled={agentsLoading} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50"><RefreshCw className={cn("h-3.5 w-3.5", agentsLoading && "animate-spin")} /> Refresh</button>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Every campaign, conversation, and post is isolated to the selected brand.
+          Choose which published GHL agent supplies the brand knowledge for content creation. New agents appear after refresh.
         </p>
+        {agentsError && <p role="alert" className="mt-2 text-sm text-destructive">{agentsError}</p>}
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {brands.map((b) => (
             <button
@@ -105,7 +108,7 @@ function SettingsPage() {
               <span
                 className={cn(
                   "h-10 w-10 rounded-full",
-                  b.id === "convini" ? "bg-brand-convini" : "bg-brand-ustow",
+                  b.dotClass,
                 )}
               />
               <div className="flex-1">
@@ -168,8 +171,8 @@ function SettingsPage() {
               </div>
               <label className="text-xs text-muted-foreground">
                 Brand
-                <select aria-label={`Brand for ${a.account}`} className="ml-2 rounded border border-border bg-background p-2 text-foreground" value={assignmentQuery.data?.[a.id] || ""} disabled={assign.isPending || assignmentQuery.isLoading} onChange={event => assign.mutate({ accountId: a.id, brandId: (event.target.value || null) as "convini" | "ustow" | null })}>
-                  <option value="">Not assigned</option><option value="convini">Convini</option><option value="ustow">US Tow</option>
+                <select aria-label={`Brand for ${a.account}`} className="ml-2 rounded border border-border bg-background p-2 text-foreground" value={assignmentQuery.data?.[a.id] || ""} disabled={assign.isPending || assignmentQuery.isLoading} onChange={event => assign.mutate({ accountId: a.id, brandId: event.target.value || null })}>
+                  <option value="">Not assigned</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </label>
               <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-[11px] font-medium text-success">
