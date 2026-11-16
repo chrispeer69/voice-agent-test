@@ -6,3 +6,7 @@
 - Never commit API keys or copy secrets from another repository.
 - Validate server changes with Ruff and `py_compile`.
 - Validate client changes with `npm run build`.
+
+## Social Planner handoff for Chris's agent
+
+Before changing or deploying the Social Planner, read [bluecollar-command/docs/PLANNER_OPERATIONS.md](bluecollar-command/docs/PLANNER_OPERATIONS.md). It is the current setup and behavior guide. Read [bluecollar-command/docs/GHL_AGENT_SETUP.md](bluecollar-command/docs/GHL_AGENT_SETUP.md) when adding or troubleshooting a GHL agent. Keep both docs current when the integration or Railway setup changes.
