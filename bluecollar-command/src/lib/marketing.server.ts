@@ -254,7 +254,10 @@ async function createPostForAccounts(post: SocialPost, status: "draft" | "schedu
         reserved = false;
         throw new Error(`GHL ${response.status}: ${body.slice(0, 200)}`);
       }
-      const written = parsePostWriteResponse(await response.json());
+      const responseBody = await response.json();
+      // GHL sometimes acknowledges an update without echoing the post ID.
+      // The ID on the successful PUT is already known from the draft sync.
+      const written = parsePostWriteResponse(responseBody, previous.remoteId, status);
       updateStore(s => { s.deliveries[key] = { state: "complete", fingerprint, remoteId: written.id, status: written.status }; });
       reserved = false;
       results.push({ accountId, platform, ok: true, ghlPostId: written.id, status: written.status });
@@ -495,8 +498,15 @@ export async function listPosts(brandId?: BrandId): Promise<SocialPost[]> {
   // superseded by its live counterpart.
   let live = await fetchGhlPosts();
   if (brandId) live = live.filter(p => !p.brandUnassigned && p.brandId === brandId);
-  const liveGhlIds = new Set(live.flatMap(p => [p.ghlPostId, p.ghlParentPostId]).filter(Boolean));
-  const localOnly = local.filter(p => !p.ghlPostId && !p.publishResults?.some(r => r.ghlPostId && liveGhlIds.has(r.ghlPostId)) || !!p.publishResults?.some(r => !r.ok));
+  const localOnly = local.filter(p => {
+    const remoteIds = [p.ghlPostId, ...((p.publishResults ?? []).map(r => r.ghlPostId)),
+      ...Object.entries(s.deliveries).filter(([key]) => key.startsWith(`${p.id}:`)).map(([, delivery]) => delivery.remoteId)].filter((id): id is string => Boolean(id));
+    // A post that has ever synced to GHL belongs to GHL's live list. If it
+    // disappeared there, it was deleted and must not linger in our calendar.
+    if (remoteIds.length) return false;
+    // Keep only genuinely local drafts that were never accepted by GHL.
+    return p.status === 'draft' || p.status === 'in_review';
+  });
 
   const merged = [...live, ...localOnly];
   return merged.map((p) => ({

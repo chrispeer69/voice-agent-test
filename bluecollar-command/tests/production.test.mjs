@@ -34,12 +34,13 @@ after(() => { globalThis.fetch = originalFetch; rmSync(directory, { recursive: t
 const account = { id: 'facebook-account', platform: 'facebook', name: 'Test Page', active: true, originId: 'native-page', profileId: 'profile-record' };
 let calls = [];
 let writeMode = 'success';
+let livePosts = [{ _id: 'live-post', accountIds: [account.id], summary: 'Existing post', status: 'published', publishedAt: '2026-01-01T00:00:00Z', createdAt:'2026-01-01T00:00:00Z' }];
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(input); calls.push({ url, init });
   if (url.pathname.endsWith('/accounts')) return Response.json({ results: { accounts: [account] } });
   if (url.pathname === '/users/') return Response.json({ users: [{ id: 'test-user' }] });
   if (url.pathname.includes('/execute')) return Response.json({ success: true, sessionId: 'session', finalText: url.pathname.includes('convini-agent') ? 'Convini reply' : 'US Tow reply' });
-  if (url.pathname.endsWith('/posts/list')) return Response.json({ results: { posts: [{ _id: 'live-post', accountIds: [account.id], summary: 'Existing post', status: 'published', publishedAt: '2026-01-01T00:00:00Z', createdAt:'2026-01-01T00:00:00Z' }], count: 1 } });
+  if (url.pathname.endsWith('/posts/list')) return Response.json({ results: { posts: livePosts, count: livePosts.length } });
   if (url.pathname.endsWith('/statistics')) return Response.json({ results: { breakdowns: {
     reach: { platforms: { facebook: { value: 12 } } },
     engagement: { facebook: { likes: 3, comments: 2, shares: 1 } },
@@ -81,6 +82,19 @@ test('saving a draft syncs it to GHL without publishing to social accounts', asy
   assert.equal(writesAfter, writesBefore, 'Unchanged drafts should not be duplicated in GHL');
   await api.schedulePostViaGhl({ ...saved, status: 'approved', scheduledAt: new Date(Date.now() + 86400000).toISOString() });
   assert.equal(calls.at(-1).init.method, 'PUT', 'Scheduling should update the synced draft');
+});
+
+test('a remote-linked post disappears locally after deletion in GHL', async () => {
+  const saved = await api.syncDraftToGhl({ ...makePost('deleted-in-ghl'), status: 'draft' });
+  assert.equal(saved.publishResults[0].ghlPostId, 'remote-post');
+  livePosts = [];
+  assert.equal((await api.listPosts()).some(post => post.id === saved.id), false);
+  livePosts = [{ _id: 'live-post', accountIds: [account.id], summary: 'Existing post', status: 'published', publishedAt: '2026-01-01T00:00:00Z', createdAt:'2026-01-01T00:00:00Z' }];
+});
+
+test('a successful GHL update can reuse the known draft ID', () => {
+  assert.deepEqual(contract.parsePostWriteResponse({ success: true }, 'known-draft', 'scheduled'), { id: 'known-draft', status: 'scheduled' });
+  assert.throws(() => contract.parsePostWriteResponse({ success: true }), /post ID/);
 });
 
 test('Google Business Profile standard updates include required details and reject unsupported media', () => {

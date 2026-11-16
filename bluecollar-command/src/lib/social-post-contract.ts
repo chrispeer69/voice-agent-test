@@ -44,12 +44,12 @@ export function buildPostPayload(post: SocialPost, accountId: string, platform: 
   return payload;
 }
 
-export function parsePostWriteResponse(data: any): { id: string; status: PostStatus } {
+export function parsePostWriteResponse(data: any, existingId?: string, requestedStatus?: PostStatus): { id: string; status: PostStatus } {
   if (data?.success === false) throw new Error(String(data.message || 'GHL rejected the post.'));
   const post = data?.results?.post ?? data?.post ?? data;
-  const id = post?._id ?? post?.id ?? data?.postId;
+  const id = post?._id ?? post?.id ?? data?.results?._id ?? data?.results?.id ?? data?.results?.postId ?? data?.postId ?? existingId;
   if (!id || typeof id !== 'string') throw new Error('GHL did not return a post ID. Check GHL before retrying.');
   const status = normalizePostStatus(post.status);
   if (status === 'failed') throw new Error(String(post.error || 'GHL reported a publishing failure.'));
-  return { id, status: post.status ? status : 'publishing' };
+  return { id, status: post.status ? status : requestedStatus ?? 'publishing' };
 }
