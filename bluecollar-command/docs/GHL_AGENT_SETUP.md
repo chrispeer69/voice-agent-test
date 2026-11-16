@@ -41,7 +41,7 @@ GHL_TIMEZONE=America/New_York
 
 The planner service also requires its existing `APP_ACCESS_PASSWORD` and `SESSION_SECRET`. Never commit their values. The frontend needs its planner URL configuration but no GHL token.
 
-For **Suggest an idea** and **Improve prompt with AI**, also set `ANTHROPIC_API_KEY` on the Social Planner service. These text helpers use Anthropic directly. The planner saves the selected agent's public GHL metadata in its existing data volume on first selection and combines it with the editable content guide in Settings. GHL's published-agent endpoint does not provide the full instructions or knowledge-base text; enter any verified facts needed for suggestions in the content guide. Final post generation still uses the selected GHL agent.
+**Suggest an idea** and **Improve prompt with AI** use the selected GHL agent. No Anthropic key is needed for the Social Planner. The planner saves the selected agent's public GHL metadata in its existing data volume on first selection and also passes the editable content guide in Settings to the agent. GHL's published-agent metadata endpoint does not provide the full instructions or knowledge-base text; the agent can use its own attached knowledge while responding.
 
 ## Troubleshooting
 

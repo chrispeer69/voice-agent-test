@@ -327,14 +327,14 @@ function BrandSetupCard({ brandId, brandName }: { brandId: BrandId; brandName: s
   ] as const;
   return <Card className="mb-6">
     <h2 className="text-lg font-semibold text-foreground">{brandName} content guide</h2>
-    <p className="mt-2 text-sm leading-6 text-muted-foreground">Saved for this agent in the planner. Anthropic uses these details for ideas and prompt improvement; the GHL agent uses them when writing posts. Fill it out once and edit it whenever business details change.</p>
+    <p className="mt-2 text-sm leading-6 text-muted-foreground">Saved for this agent in the planner. The selected GHL agent uses these details for ideas, prompt improvement, and post writing. Fill it out once and edit it whenever business details change.</p>
     {details.isLoading && <p className="mt-4 text-sm text-muted-foreground">Loading saved GHL agent details…</p>}
     {details.error && <p role="alert" className="mt-4 text-sm text-destructive">{details.error.message}</p>}
     {details.data?.agent && <div className="mt-5 rounded-xl border border-border bg-background p-4 text-sm">
       <p className="font-semibold">Imported from GHL: {details.data.agent.name}</p>
       <p className="mt-1 leading-6 text-muted-foreground">{details.data.agent.description}</p>
       <p className="mt-2 text-xs text-muted-foreground">{details.data.agent.knowledgeBaseIds.length} linked knowledge base · {details.data.agent.tools.includes("image_generation") ? "Image tool enabled" : "No image tool"} · {details.data.agent.tools.includes("video_generation") ? "Video tool enabled" : "No video tool"}</p>
-      <p className="mt-2 text-xs text-muted-foreground">GHL exposes this agent metadata, but not its full instructions or knowledge-base text through this endpoint. Add verified business facts below so Anthropic can use them.</p>
+      <p className="mt-2 text-xs text-muted-foreground">GHL exposes this agent metadata, but not its full instructions or knowledge-base text through this endpoint. Add any extra verified facts below to guide the agent.</p>
     </div>}
     <div className="mt-5 grid gap-4 sm:grid-cols-2">
       {fields.map(field => <label key={field.key} className={field.key === "businessDetails" ? "sm:col-span-2" : ""}>

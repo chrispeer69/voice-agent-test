@@ -13,7 +13,7 @@ process.env.GHL_PRIVATE_INTEGRATION_TOKEN = 'test-token';
 process.env.GHL_LOCATION_ID = 'test-location';
 process.env.CONVINI_AGENT_ID = 'convini-agent';
 process.env.USTOW_AGENT_ID = 'ustow-agent';
-const modules = ['types','marketing-store.server','ghl-client.server','social-post-contract','caption-clean.server','agent.server','marketing.server','anthropic-assist.server','batch-schedule','batch.server'];
+const modules = ['types','marketing-store.server','ghl-client.server','social-post-contract','caption-clean.server','agent.server','marketing.server','agent-metadata.server','batch-schedule','batch.server'];
 for (const name of modules) {
   const source = readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/from (["'])\.\/([^"']+)\1/g, 'from "./$2.mjs"');
@@ -26,7 +26,7 @@ const { ghlFetch } = await load('ghl-client.server');
 const { store, updateStore } = await load('marketing-store.server');
 const api = await load('marketing.server');
 const { runAgentTurn } = await load('agent.server');
-const { generateWritingAssist, getSavedAgentDetails } = await load('anthropic-assist.server');
+const { getSavedAgentDetails } = await load('agent-metadata.server');
 const { buildBatchPosts } = await load('batch.server');
 const contract = await load('social-post-contract');
 const originalFetch = globalThis.fetch;
@@ -198,40 +198,31 @@ test('brand content guidance persists separately for Convini and US Tow', async 
   assert.equal(store().brandProfiles.ustow?.audience, 'Tow operators');
 });
 
-test('Anthropic writing help uses saved brand facts and stores GHL agent metadata once', async () => {
+test('GHL agent metadata is saved once and fast writing requests stay on GHL', async () => {
   const previousFetch = globalThis.fetch;
-  process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
   let metadataReads = 0;
-  let anthropicCalls = 0;
+  let agentCalls = 0;
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input);
-    if (url.pathname.includes('/managed-agents/')) {
+    assert.equal(url.origin, 'https://services.leadconnectorhq.com');
+    if (url.pathname.endsWith('/convini-agent')) {
       metadataReads++;
       return Response.json({ name: 'Convini Marketing Agent', description: 'Helpful vehicle care content', tools: ['image_generation'], knowledgeBaseIds: ['kb-1'] });
     }
-    if (url.origin === 'https://api.anthropic.com') {
-      anthropicCalls++;
-      assert.equal(init.headers['x-api-key'], 'test-anthropic-key');
-      const payload = JSON.parse(init.body);
-      assert.match(payload.system, /Verified example/);
-      assert.match(payload.system, /Helpful vehicle care content/);
-      return Response.json({ content: [{ type: 'text', text: 'Show a practical vehicle care tip.' }] });
+    if (url.pathname.endsWith('/convini-agent/execute')) {
+      agentCalls++;
+      assert.match(JSON.parse(init.body).message, /verified facts/i);
+      return Response.json({ success: true, sessionId: 'fast-session', finalText: 'Show a practical vehicle care tip.' });
     }
-    throw new Error('Unexpected request');
+    throw new Error('Unexpected request: ' + url.pathname);
   };
   try {
-    const request = { brandId: 'convini', mode: 'idea', context: 'single', input: '', previousIdeas: [] };
-    assert.equal((await generateWritingAssist(request)).text, 'Show a practical vehicle care tip.');
     assert.equal((await getSavedAgentDetails('convini')).knowledgeBaseIds[0], 'kb-1');
-    assert.equal((await generateWritingAssist(request)).text, 'Show a practical vehicle care tip.');
+    assert.equal((await getSavedAgentDetails('convini')).name, 'Convini Marketing Agent');
+    assert.equal((await runAgentTurn('convini', 'Use verified facts and suggest one idea.', undefined, true)).reply, 'Show a practical vehicle care tip.');
     assert.equal(metadataReads, 1);
-    assert.equal(anthropicCalls, 2);
-    globalThis.fetch = async () => Response.json({ error: { type: 'invalid_request_error', message: 'You have reached your specified API usage limits.' } }, { status: 400 });
-    await assert.rejects(generateWritingAssist(request), /specified API usage limits/);
-  } finally {
-    globalThis.fetch = previousFetch;
-    delete process.env.ANTHROPIC_API_KEY;
-  }
+    assert.equal(agentCalls, 1);
+  } finally { globalThis.fetch = previousFetch; }
 });
 
 test('batch media choice controls text, photo, and video generation without posting', async () => {
