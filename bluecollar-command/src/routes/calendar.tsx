@@ -7,10 +7,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useBrand } from "@/lib/brand-context";
 import {
   getPosts,
-  getCampaigns,
   reschedulePost,
-  approvePost,
-  publishPost,
 } from "@/lib/marketing.functions";
 import { Card, PageHeader, StatusBadge, PlatformStack } from "@/components/shared";
 import { PLATFORMS, STATUS_META } from "@/lib/types";
@@ -42,7 +39,6 @@ function CalendarPage() {
   const [cursor, setCursor] = useState(() => new Date());
   const [platformFilter, setPlatformFilter] = useState<Platform | "all">("all");
   const [statusFilter, setStatusFilter] = useState<PostStatus | "all">("all");
-  const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [selected, setSelected] = useState<SocialPost | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
@@ -50,15 +46,7 @@ function CalendarPage() {
     queryKey: ["posts", scope === "all" ? "all" : brand.id],
     queryFn: () => getPosts({ data: scope === "all" ? {} : { brandId: brand.id } }),
   });
-  const campaignsQuery = useQuery({
-    queryKey: ["campaigns", scope === "all" ? "all" : brand.id],
-    queryFn: () => getCampaigns({ data: scope === "all" ? {} : { brandId: brand.id } }),
-  });
-  const campaigns = campaignsQuery.data ?? [];
-
   const reschedule = useServerFn(reschedulePost);
-  const approve = useServerFn(approvePost);
-  const publish = useServerFn(publishPost);
 
   const rescheduleMut = useMutation({
     mutationFn: (vars: { id: string; scheduledAt: string }) => reschedule({ data: vars }),
@@ -70,42 +58,15 @@ function CalendarPage() {
       toast.error(err instanceof Error ? err.message : "Failed to reschedule");
     },
   });
-  const approveMut = useMutation({
-    mutationFn: (id: string) => approve({ data: { id } }),
-    onSuccess: () => {
-      toast.success("Post approved");
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Failed to approve");
-    },
-  });
-  const publishMut = useMutation({
-    mutationFn: (id: string) => publish({ data: { id } }),
-    onSuccess: (res) => {
-      if (res.status === "failed") {
-        const err =
-          res.publishResults?.find((r) => !r.ok)?.error || "Failed to publish to Social Planner";
-        toast.error(`Social Planner Error: ${err}`);
-      } else {
-        toast.success("Successfully pushed to Social Planner!");
-      }
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Failed to publish to Social Planner");
-    },
-  });
 
   const posts = useMemo(() => {
     const all = postsQuery.data ?? [];
     return all.filter(
       (p) =>
         (platformFilter === "all" || p.platforms.includes(platformFilter)) &&
-        (statusFilter === "all" || p.status === statusFilter) &&
-        (campaignFilter === "all" || p.campaignId === campaignFilter),
+        (statusFilter === "all" || p.status === statusFilter),
     );
-  }, [postsQuery.data, platformFilter, statusFilter, campaignFilter]);
+  }, [postsQuery.data, platformFilter, statusFilter]);
 
   function postDate(p: SocialPost): Date {
     const iso = p.scheduledAt || p.publishedAt || p.createdAt;
@@ -166,7 +127,7 @@ function CalendarPage() {
         <FilterSelect
           label="Scope"
           value={scope}
-          onChange={(value) => { setScope(value as "all" | "brand"); setCampaignFilter("all"); }}
+          onChange={(value) => setScope(value as "all" | "brand")}
           options={[{ value: "all", label: "Entire subaccount" }, { value: "brand", label: brand.name }]}
         />
         <FilterSelect
@@ -185,15 +146,6 @@ function CalendarPage() {
           options={[
             { value: "all", label: "All statuses" },
             ...Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: m.label })),
-          ]}
-        />
-        <FilterSelect
-          label="Campaign"
-          value={campaignFilter}
-          onChange={(v) => setCampaignFilter(v)}
-          options={[
-            { value: "all", label: "All campaigns" },
-            ...campaigns.map((c) => ({ value: c.id, label: c.name })),
           ]}
         />
       </div>
@@ -383,15 +335,7 @@ function CalendarPage() {
       {selected && (
         <PostDrawer
           post={selected}
-          publishing={publishMut.isPending}
           onClose={() => setSelected(null)}
-          onApprove={(id) => {
-            approveMut.mutate(id);
-            setSelected(null);
-          }}
-          onPublish={(id) => {
-            publishMut.mutate(id);
-          }}
           onReschedule={(id, at) => {
             rescheduleMut.mutate({ id, scheduledAt: at });
             setSelected(null);
@@ -405,17 +349,11 @@ function CalendarPage() {
 function PostDrawer({
   post,
   onClose,
-  onApprove,
-  onPublish,
   onReschedule,
-  publishing,
 }: {
   post: SocialPost;
   onClose: () => void;
-  onApprove: (id: string) => void;
-  onPublish: (id: string) => void;
   onReschedule: (id: string, at: string) => void;
-  publishing?: boolean;
 }) {
   const [at, setAt] = useState(() => {
     try {
@@ -511,29 +449,16 @@ function PostDrawer({
             </button>
           </div>
           <button
-            disabled={!at}
+            disabled={!at || !["draft", "in_review", "approved", "scheduled"].includes(post.status)}
             onClick={() => onReschedule(post.id, new Date(at).toISOString())}
             className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
           >
-            Reschedule
-          </button>
-          <button
-            onClick={() => onApprove(post.id)}
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent"
-          >
-            Approve
-          </button>
-          <button
-            onClick={() => onPublish(post.id)}
-            disabled={publishing}
-            className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
-          >
-            {publishing ? "Pushing to Social Planner…" : "Publish to Social Planner now"}
+            {post.status === "scheduled" ? "Reschedule" : "Schedule post"}
           </button>
 
           {post.publishResults && post.publishResults.length > 0 && (
             <div className="mt-3 space-y-1.5 text-xs">
-              <div className="font-semibold text-muted-foreground">Social Planner Sync Status:</div>
+              <div className="font-semibold text-muted-foreground">GHL sync status:</div>
               {post.publishResults.map((r, i) => (
                 <div
                   key={i}

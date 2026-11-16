@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   PenSquare,
   CalendarDays,
-  Megaphone,
   CheckSquare,
   MessageSquare,
   BarChart3,
@@ -15,7 +14,6 @@ import { cn } from "@/lib/utils";
 
 export const NAV = [
   { to: "/", label: "Home", icon: LayoutDashboard },
-  { to: "/quick-create", label: "Create", icon: PenSquare },
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/content", label: "Content", icon: CheckSquare },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -23,9 +21,8 @@ export const NAV = [
 
 export const MORE_NAV = [
   { to: "/create", label: "Detailed editor", icon: PenSquare },
-  { to: "/batch", label: "Batch planning", icon: Layers },
+  { to: "/batch", label: "Multiple posts", icon: Layers },
   { to: "/approvals", label: "Approvals", icon: CheckSquare },
-  { to: "/campaigns", label: "Campaigns", icon: Megaphone },
   { to: "/comments", label: "Comments", icon: MessageSquare },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
 ] as const;

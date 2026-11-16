@@ -45,6 +45,7 @@ globalThis.fetch = async (input, init = {}) => {
   } } });
   if (url.pathname.endsWith('/comments/facebook/list')) return Response.json({results:{comments:[{_id:'comment-id',postId:'live-post',platform:'facebook',content:'A comment',author:{name:'Test'},createdAt:'2026-01-01T00:00:00Z'}],meta:{hasMore:false}}});
   if (url.pathname.endsWith('/comments/facebook')) return Response.json({success:true});
+  if (url.pathname.includes('/posts') && init.method === 'DELETE') return Response.json({ success: true, results: { postId: url.pathname.split('/').at(-1) } });
   if (url.pathname.includes('/posts')) {
     if (writeMode === 'network-error') throw new Error('Connection lost');
     if (writeMode === 'reject') return Response.json({ message: 'Invalid media' }, { status: 422 });
@@ -54,6 +55,31 @@ globalThis.fetch = async (input, init = {}) => {
   throw new Error('Unexpected request: ' + url.pathname);
 };
 const makePost = id => ({ id, brandId: 'convini', campaignId: null, type: 'custom', accountIds: [account.id], platforms:['facebook'], objective:'awareness', format:'text', title:'Test', body:'Test caption', media:[], commentToDm:false, status:'approved', createdAt:'2026-01-01T00:00:00Z', updatedAt:'2026-01-01T00:00:00Z' });
+
+test('discard removes local and synced drafts, never published posts', async () => {
+  await api.savePost({ ...makePost('discard-local'), status: 'draft' });
+  await api.savePost({ ...makePost('keep-published'), status: 'published' });
+  await api.savePost({ ...makePost('keep-remote'), status: 'draft', ghlPostId: 'remote-id' });
+  assert.equal(await api.deletePost('discard-local'), true);
+  assert.equal(await api.deletePost('keep-published'), false);
+  assert.equal(await api.deletePost('keep-remote'), true);
+  assert.ok(calls.some(call => call.init.method === 'DELETE' && call.url.pathname.endsWith('/posts/remote-id')));
+  assert.equal(store().posts.some(post => post.id === 'discard-local'), false);
+});
+
+test('saving a draft syncs it to GHL without publishing to social accounts', async () => {
+  const saved = await api.syncDraftToGhl({ ...makePost('sync-draft'), status: 'draft' });
+  assert.equal(saved.status, 'draft');
+  assert.equal(saved.publishResults[0].status, 'draft');
+  const request = calls.findLast(call => call.url.pathname.endsWith('/posts') && call.init.method === 'POST');
+  assert.equal(JSON.parse(request.init.body).status, 'draft');
+  const writesBefore = calls.filter(call => call.url.pathname.includes('/posts') && ['POST', 'PUT'].includes(call.init.method) && !call.url.pathname.endsWith('/list')).length;
+  await api.syncDraftToGhl(saved);
+  const writesAfter = calls.filter(call => call.url.pathname.includes('/posts') && ['POST', 'PUT'].includes(call.init.method) && !call.url.pathname.endsWith('/list')).length;
+  assert.equal(writesAfter, writesBefore, 'Unchanged drafts should not be duplicated in GHL');
+  await api.schedulePostViaGhl({ ...saved, status: 'approved', scheduledAt: new Date(Date.now() + 86400000).toISOString() });
+  assert.equal(calls.at(-1).init.method, 'PUT', 'Scheduling should update the synced draft');
+});
 
 test('Google Business Profile standard updates include required details and reject unsupported media', () => {
   const googlePost = { ...makePost('google'), accountIds: ['google-account'], platforms: ['google'] };

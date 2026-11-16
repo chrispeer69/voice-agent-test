@@ -21,7 +21,6 @@ import {
   submitForApproval,
   schedulePost,
   publishPost,
-  getCampaigns,
   getSocialAccounts,
 } from "@/lib/marketing.functions";
 import { Card, PageHeader, PlatformIcon } from "@/components/shared";
@@ -93,12 +92,6 @@ function CreateContent() {
   const { brand } = useBrand();
   const queryClient = useQueryClient();
 
-  const campaignsQuery = useQuery({
-    queryKey: ["campaigns", brand.id],
-    queryFn: () => getCampaigns({ data: { brandId: brand.id } }),
-  });
-  const campaigns = campaignsQuery.data ?? [];
-
   const accountsQuery = useQuery({
     queryKey: ["social-accounts"],
     queryFn: () => getSocialAccounts(),
@@ -128,9 +121,11 @@ function CreateContent() {
 
   const saveDraftMut = useMutation({
     mutationFn: () => saveDraft({ data: { post } }),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       invalidate();
-      toast.success("Draft saved");
+      if (saved.accountIds.length && saved.publishResults?.some(result => !result.ok)) toast.error("Draft saved locally, but GHL sync failed for some accounts.");
+      else if (saved.accountIds.length) toast.success("Draft synced to GHL Social Planner");
+      else toast.success("Draft saved locally. Select an account to sync it to GHL.");
     },
   });
   const submitMut = useMutation({
@@ -263,7 +258,7 @@ function CreateContent() {
                   ))}
                 </select>
               </Field>
-              <Field label="Campaign objective">
+              <Field label="Goal">
                 <select
                   className="input"
                   value={post.objective}
@@ -274,20 +269,6 @@ function CreateContent() {
                   {OBJECTIVES.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Campaign">
-                <select
-                  className="input"
-                  value={post.campaignId ?? ""}
-                  onChange={(e) => setPost({ ...post, campaignId: e.target.value || null })}
-                >
-                  <option value="">No campaign</option>
-                  {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
                     </option>
                   ))}
                 </select>

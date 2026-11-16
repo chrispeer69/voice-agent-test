@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useBrand } from "@/lib/brand-context";
+import { GHL_AGENT_STUDIO_URL } from "@/lib/ghl-links";
 import { getSocialAccounts, getApprovers, runAgentDiagnostic, getAccountBrands, setAccountBrand, getBrandSetup, saveBrandSetup } from "@/lib/marketing.functions";
 import { Card, PageHeader, PlatformIcon } from "@/components/shared";
 import { PLATFORMS, type BrandId } from "@/lib/types";
@@ -95,30 +96,8 @@ function SettingsPage() {
           Choose which published GHL agent supplies the brand knowledge for content creation. New agents appear after refresh.
         </p>
         {agentsError && <p role="alert" className="mt-2 text-sm text-destructive">{agentsError}</p>}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {brands.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => setBrandId(b.id)}
-              className={cn(
-                "flex items-center gap-3 rounded-xl border p-4 text-left transition-colors",
-                brand.id === b.id ? "border-primary bg-primary/5" : "border-border hover:bg-accent",
-              )}
-            >
-              <span
-                className={cn(
-                  "h-10 w-10 rounded-full",
-                  b.dotClass,
-                )}
-              />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-foreground">{b.name}</div>
-                <div className="text-xs text-muted-foreground">{b.tagline}</div>
-              </div>
-              {brand.id === b.id && <CheckCircle2 className="h-5 w-5 text-primary" />}
-            </button>
-          ))}
-        </div>
+        <label htmlFor="settings-agent" className="mt-4 block text-sm font-semibold">AI agent<select id="settings-agent" className="input mt-2 w-full bg-white" value={brand.id} onChange={event => setBrandId(event.target.value)}>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+        <a href={GHL_AGENT_STUDIO_URL} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm text-primary hover:underline">Create an agent in GHL ↗</a>
       </Card>
 
       {/* Connected social accounts */}

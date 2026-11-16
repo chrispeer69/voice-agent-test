@@ -8,7 +8,6 @@ import { z } from "zod";
 import type {
   BrandId,
   Campaign,
-  CampaignCadence,
   CampaignObjective,
   Comment,
   Platform,
@@ -39,6 +38,7 @@ import {
   savePost,
   saveSession,
   schedulePostViaGhl,
+  syncDraftToGhl,
   getSession,
   testAgentExecution,
   uid,
@@ -187,7 +187,7 @@ export const getPostById = createServerFn({ method: "GET" })
 export const upsertPost = createServerFn({ method: "POST" })
   .validator((data: { post: SocialPost }) => z.object({ post: z.any() }).parse(data))
   .handler(async ({ data }) => {
-    return savePost(data.post);
+    return data.post.status === 'draft' ? syncDraftToGhl(data.post) : savePost(data.post);
   });
 
 export const removePost = createServerFn({ method: "POST" })
@@ -200,7 +200,7 @@ export const saveDraftPost = createServerFn({ method: "POST" })
   .validator((data: { post: SocialPost }) => z.object({ post: z.any() }).parse(data))
   .handler(async ({ data }) => {
     const draft = { ...data.post, status: "draft" as const };
-    return savePost(draft);
+    return syncDraftToGhl(draft);
   });
 
 export const submitForApproval = createServerFn({ method: "POST" })
@@ -333,7 +333,7 @@ export const reschedulePost = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const post = await getPost(data.id);
     if (!post) throw new Error("Post not found");
-    if (!["approved", "scheduled"].includes(post.status)) throw new Error("Approve this post before scheduling.");
+    if (!["draft", "in_review", "approved", "scheduled"].includes(post.status)) throw new Error("Only drafts and reviewed posts can be scheduled.");
     const updated = { ...post, scheduledAt: data.scheduledAt };
     const results = await schedulePostViaGhl(updated);
     if (!results.length || results.some(r => !r.ok)) {
@@ -520,7 +520,7 @@ export const requestMedia = createServerFn({ method: "POST" })
   });
 
 /**
- * Generate a batch of posts for a date range as one campaign through the brand
+ * Generate posts for a chosen day and time window through the brand
  * agent (real copy + media). Returns drafts for preview — nothing is saved or
  * published until the caller approves.
  */
@@ -531,10 +531,11 @@ export const generateBatchPosts = createServerFn({ method: "POST" })
       brief: string;
       count: number;
       startDate: string;
-      endDate: string;
+      days: number;
+      windowStart: string;
+      windowEnd: string;
       objective: CampaignObjective;
       accountIds: string[];
-      cadence: CampaignCadence;
     }) =>
       z
         .object({
@@ -542,7 +543,9 @@ export const generateBatchPosts = createServerFn({ method: "POST" })
           brief: z.string().max(2000),
           count: z.number().min(1).max(20),
           startDate: z.string(),
-          endDate: z.string(),
+          days: z.number().int().min(1).max(90),
+          windowStart: z.string().regex(/^\d{2}:\d{2}$/),
+          windowEnd: z.string().regex(/^\d{2}:\d{2}$/),
           objective: z.enum([
             "awareness",
             "engagement",
@@ -552,7 +555,6 @@ export const generateBatchPosts = createServerFn({ method: "POST" })
             "support",
           ]),
           accountIds: z.array(z.string()),
-          cadence: z.enum(["one_time", "weekly", "monthly"]),
         })
         .parse(data),
   )

@@ -11,11 +11,11 @@ export function normalizePostStatus(status: unknown): PostStatus {
   return 'draft';
 }
 
-export function buildPostPayload(post: SocialPost, accountId: string, platform: Platform, status: 'scheduled' | 'published', userId: string) {
+export function buildPostPayload(post: SocialPost, accountId: string, platform: Platform, status: 'draft' | 'scheduled' | 'published', userId: string) {
   if (!accountId || !post.accountIds.includes(accountId)) throw new Error('Select an account before publishing.');
   const summary = post.copyByPlatform?.[platform] ?? post.body;
-  if (!summary.trim() && !post.media.length) throw new Error('Add content or media before publishing.');
-  if (platform === 'instagram' && !post.media.length) throw new Error('Instagram requires an image or video.');
+  if (status !== 'draft' && !summary.trim() && !post.media.length) throw new Error('Add content or media before publishing.');
+  if (status !== 'draft' && platform === 'instagram' && !post.media.length) throw new Error('Instagram requires an image or video.');
   if (platform === 'google') {
     if (summary.length > 1500) throw new Error('Google Business Profile posts must be 1,500 characters or fewer.');
     if (post.media.length > 1 || post.media.some(item => item.type !== 'image' || !/\.(jpe?g|png)(?:\?|$)/i.test(item.url))) {

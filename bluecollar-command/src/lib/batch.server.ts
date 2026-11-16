@@ -1,11 +1,10 @@
-// Server-only batch generation. Generates a batch of posts for a date range as
-// one campaign using the brand agent (real copy) and media generator (real
+// Server-only batch generation. Generates posts for a chosen day and time window
+// using the brand agent (real copy) and media generator (real
 // visuals). Nothing is saved or published here — the caller previews, then
 // approves. Session-gated; client code never imports this directly.
 
 import type {
   BrandId,
-  CampaignCadence,
   CampaignObjective,
   MediaItem,
   Platform,
@@ -22,6 +21,7 @@ import {
 } from "./caption-clean.server";
 import { fetchSocialAccounts, frameCaptionPrompt } from "./marketing.server";
 import { runCombinedTurn } from "./agent.server";
+import { planBatchTimes } from './batch-schedule';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -32,18 +32,18 @@ export async function buildBatchPosts(params: {
   brief: string;
   count: number;
   startDate: string;
-  endDate: string;
+  days: number;
+  windowStart: string;
+  windowEnd: string;
   objective: CampaignObjective;
   accountIds: string[];
-  cadence: CampaignCadence;
 }): Promise<{ posts: SocialPost[]; error?: string }> {
   await requireSession();
-  const { brandId, brief, objective, accountIds, cadence, startDate, endDate } = params;
-  const start = startDate ? new Date(startDate) : new Date();
-  const end = endDate ? new Date(endDate) : new Date(Date.now() + 14 * 86400000);
-  const spanDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000));
-  const n = Math.min(Math.max(params.count, 1), 20);
-  const interval = Math.max(1, Math.floor(spanDays / n));
+  const { brandId, brief, objective, accountIds, startDate, days, windowStart, windowEnd } = params;
+  const timezone = process.env.GHL_TIMEZONE?.trim();
+  if (!timezone) throw new Error('Set GHL_TIMEZONE before creating a timed batch.');
+  const schedule = planBatchTimes({ count: params.count, startDate, days, windowStart, windowEnd, timezone });
+  const n = schedule.length;
 
   const { accounts } = await fetchSocialAccounts();
   const platforms = accountIds
@@ -71,9 +71,7 @@ export async function buildBatchPosts(params: {
   const MAX_CONSECUTIVE_FAILURES = 2; // stop generating empty posts
 
   for (let i = 0; i < n; i++) {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i * interval);
-    d.setHours(10, 0, 0, 0);
+    const scheduledAt = schedule[i]!;
     const angle = angles[i % angles.length];
 
     // Build a concise, combined prompt that asks for BOTH the caption and the
@@ -202,7 +200,7 @@ export async function buildBatchPosts(params: {
       commentToDm: false,
       commentToDmKeyword: undefined,
       status: "draft",
-      scheduledAt: d.toISOString(),
+      scheduledAt,
       createdAt: now,
       updatedAt: now,
       agentExecutionId: executionId,

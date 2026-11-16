@@ -212,8 +212,8 @@ export async function fetchApprovers(): Promise<Approver[]> {
   }
 }
 
-/** Explicit user-initiated writes. Persist each account's outcome before proceeding. */
-async function createPostForAccounts(post: SocialPost, status: "scheduled" | "published"): Promise<PublishResult[]> {
+/** Persist each account's GHL write outcome before proceeding. Draft writes never publish to social accounts. */
+async function createPostForAccounts(post: SocialPost, status: "draft" | "scheduled" | "published"): Promise<PublishResult[]> {
   if (!post.accountIds.length) throw new Error("Select at least one connected social account.");
   const accts = await accountsCache();
   const userId = await ghlUserId();
@@ -269,6 +269,14 @@ async function createPostForAccounts(post: SocialPost, status: "scheduled" | "pu
 export async function publishPostViaGhl(post: SocialPost): Promise<PublishResult[]> {
   await requireSession();
   return createPostForAccounts(post, "published");
+}
+
+export async function syncDraftToGhl(post: SocialPost): Promise<SocialPost> {
+  await requireSession();
+  const saved = await savePost({ ...post, status: 'draft' });
+  if (!saved.accountIds.length) return saved;
+  const results = await createPostForAccounts(saved, 'draft');
+  return savePost({ ...saved, publishResults: results });
 }
 
 export async function schedulePostViaGhl(post: SocialPost): Promise<PublishResult[]> {
@@ -534,12 +542,19 @@ export async function savePost(post: SocialPost): Promise<SocialPost> {
 
 export async function deletePost(id: string): Promise<boolean> {
   await requireSession();
-  return updateStore(s => {
-    const idx = s.posts.findIndex(p => p.id === id);
-    if (idx < 0) return false;
-    s.posts.splice(idx, 1);
-    return true;
-  });
+  const remoteId = id.startsWith('ghl_') ? id.slice(4) : undefined;
+  const local = store().posts.find(p => p.id === id || (remoteId && (p.ghlPostId === remoteId || p.publishResults?.some(r => r.ghlPostId === remoteId))));
+  const post = remoteId ? await getPost(id) : local;
+  if (!post || post.status !== 'draft') return false;
+  const remoteIds = [...new Set([local?.ghlPostId, ...((local?.publishResults ?? []).map(r => r.ghlPostId)), remoteId].filter((value): value is string => Boolean(value)))];
+  for (const ghlId of remoteIds) {
+    const response = await ghlFetch(`${GHL_API_BASE}/social-media-posting/${encodeURIComponent(ghlLocationId())}/posts/${encodeURIComponent(ghlId)}`, { method: 'DELETE', headers: ghlHeaders(ghlToken()) });
+    if (!response.ok) throw new Error(`GHL could not discard the draft (${response.status}).`);
+    const body = await response.json();
+    if (body?.success === false) throw new Error('GHL did not confirm that the draft was discarded.');
+  }
+  if (local) updateStore(s => { s.posts = s.posts.filter(p => p.id !== local.id); for (const key of Object.keys(s.deliveries)) if (key.startsWith(`${local.id}:`)) delete s.deliveries[key]; });
+  return true;
 }
 
 export async function listCampaigns(brandId?: BrandId): Promise<Campaign[]> {

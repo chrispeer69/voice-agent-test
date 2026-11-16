@@ -17,6 +17,7 @@ import {
   Save,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -28,6 +29,7 @@ import {
   reviseDeniedPost,
   getApprovers,
   upsertPost,
+  removePost,
   requestMedia,
 } from "@/lib/marketing.functions";
 import { Card, PageHeader, StatusBadge, PlatformStack } from "@/components/shared";
@@ -64,6 +66,8 @@ function ApprovalsPage() {
   const approvers = approversQuery.data ?? [];
   const pending = posts.filter((p) => REVIEW_STATUSES.includes(p.status));
   const [reviewIndex, setReviewIndex] = useState(0);
+  const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const [discardError, setDiscardError] = useState('');
   useEffect(() => {
     const requestedId = new URLSearchParams(window.location.search).get('post');
     if (!requestedId) return;
@@ -79,6 +83,7 @@ function ApprovalsPage() {
   const reschedule = useServerFn(reschedulePost);
   const revise = useServerFn(reviseDeniedPost);
   const upsert = useServerFn(upsertPost);
+  const remove = useServerFn(removePost);
   const requestMediaFn = useServerFn(requestMedia);
 
   const invalidate = () => {
@@ -132,6 +137,18 @@ function ApprovalsPage() {
       toast.success("Post updated");
     },
   });
+  const discardMut = useMutation({
+    mutationFn: (id: string) => remove({ data: { id } }),
+    onSuccess: (removed) => {
+      if (!removed) { setDiscardError('This draft could not be discarded. Refresh and try again.'); return; }
+      setDiscardingId(null);
+      setDiscardError('');
+      setReviewIndex(i => Math.max(0, i - 1));
+      invalidate();
+      toast.success('Draft discarded');
+    },
+    onError: (error) => setDiscardError(error.message),
+  });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
@@ -149,9 +166,9 @@ function ApprovalsPage() {
         ) : (
           <>
             <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-3">
-              <button type="button" aria-label="Previous post" disabled={reviewIndex === 0} onClick={() => setReviewIndex(i => i - 1)} className="rounded-lg border border-border p-2 disabled:opacity-40"><ChevronLeft className="h-5 w-5" /></button>
+              <button type="button" aria-label="Previous post" disabled={reviewIndex === 0} onClick={() => { setReviewIndex(i => i - 1); setDiscardingId(null); }} className="rounded-lg border border-border p-2 disabled:opacity-40"><ChevronLeft className="h-5 w-5" /></button>
               <span className="text-sm font-medium">Post {Math.min(reviewIndex + 1, pending.length)} of {pending.length}</span>
-              <button type="button" aria-label="Next post" disabled={reviewIndex >= pending.length - 1} onClick={() => setReviewIndex(i => i + 1)} className="rounded-lg border border-border p-2 disabled:opacity-40"><ChevronRight className="h-5 w-5" /></button>
+              <button type="button" aria-label="Next post" disabled={reviewIndex >= pending.length - 1} onClick={() => { setReviewIndex(i => i + 1); setDiscardingId(null); }} className="rounded-lg border border-border p-2 disabled:opacity-40"><ChevronRight className="h-5 w-5" /></button>
             </div>
           {activePost && [activePost].map((p) => (
             <ApprovalRow
@@ -174,8 +191,12 @@ function ApprovalsPage() {
                 saveMut.isPending
               }
             />
-          ))
-          }</>
+          ))}
+          {activePost?.status === 'draft' && <div className="rounded-xl border border-border bg-card p-4">
+            {discardingId === activePost.id ? <><p className="text-sm font-medium">Discard this draft? This cannot be undone.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={discardMut.isPending} onClick={() => discardMut.mutate(activePost.id)} className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground disabled:opacity-50">{discardMut.isPending ? 'Discarding…' : 'Yes, discard draft'}</button><button type="button" onClick={() => setDiscardingId(null)} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button></div></> : <button type="button" onClick={() => { setDiscardError(''); setDiscardingId(activePost.id); }} className="inline-flex items-center gap-2 text-sm text-destructive hover:underline"><Trash2 className="h-4 w-4" /> Discard draft</button>}
+            {discardError && <p role="alert" className="mt-2 text-sm text-destructive">{discardError}</p>}
+          </div>}
+          </>
         )}
       </div>
 
