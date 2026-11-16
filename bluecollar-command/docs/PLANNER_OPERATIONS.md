@@ -2,6 +2,17 @@
 
 This is the handoff for anyone, including Chris's coding agent, working on the Social Planner in `chrispeer69/voice-agent-test`. Read the root `AGENTS.md` first. The planner lives in `bluecollar-command/`; Emily's separate voice backend lives in `server/` and must stay in `SAFE_TEST_MODE=true`.
 
+## Handoff links
+
+- [Social Planner website](https://social-planner-production-692d8ad8.up.railway.app/)
+- [GHL Social Planner for the subaccount](https://app.gohighlevel.com/v2/location/o3Za6RJnsGJSqkXrWgVc/marketing/social-planner/planner)
+- [GHL Agent Studio](https://app.gohighlevel.com/v2/location/o3Za6RJnsGJSqkXrWgVc/ai-agents/agent-studio)
+- [Railway project](https://railway.com/project/6528aadf-aa61-4404-b84f-ad64b253d7e1)
+- [GitHub repository](https://github.com/chrispeer69/voice-agent-test)
+- [Handoff video](https://drive.google.com/file/d/1K7lFhk9wT8Y5D6wqc1up2QOTUQu4bCHN/view?usp=sharing)
+
+The planner login password is `APP_ACCESS_PASSWORD` on the Railway **Social planner** service. Share its value privately with the operator; never put the value in Git or this document.
+
 ## Where it runs
 
 The current Railway project has a **Social planner** website service plus the existing **Frontend** and **Backend** voice services. The Social planner public URL is `https://social-planner-production-692d8ad8.up.railway.app/`. It is built from the repository root with the root `Dockerfile` (Root Directory `/`; no custom start command). The Dockerfile builds `client/` into `/voice-lab/` and `bluecollar-command/` as the main app. The voice backend remains a separate service with Root Directory `/server` and `server/railway.json`. The older frontend may remain online; it is not the Social Planner's server.
