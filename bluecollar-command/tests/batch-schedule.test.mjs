@@ -10,7 +10,7 @@ const directory = mkdtempSync(join(tmpdir(), 'batch-schedule-'));
 after(() => rmSync(directory, { recursive: true, force: true }));
 const source = readFileSync(new URL('../src/lib/batch-schedule.ts', import.meta.url), 'utf8');
 writeFileSync(join(directory, 'schedule.mjs'), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText);
-const { planBatchTimes } = await import(pathToFileURL(join(directory, 'schedule.mjs')));
+const { planBatchTimes, isoToZonedInput, zonedToIso } = await import(pathToFileURL(join(directory, 'schedule.mjs')));
 
 test('spreads requested posts within the New York local window', () => {
   const dates = planBatchTimes({ count: 5, startDate: '2027-03-15', days: 5, windowStart: '09:00', windowEnd: '18:00', timezone: 'America/New_York' });
@@ -26,4 +26,9 @@ test('rejects reversed windows and past schedules', () => {
   assert.throws(() => planBatchTimes({ ...base, windowStart: '18:00', windowEnd: '09:00' }), /window must end/);
   assert.throws(() => planBatchTimes({ ...base, count: 20, days: 1, windowStart: '09:00', windowEnd: '09:01' }), /longer posting window/);
   assert.throws(() => planBatchTimes({ ...base, startDate: '2020-01-01' }), /future starting date/);
+});
+
+test('schedule editor round-trips New York local time', () => {
+  const iso = zonedToIso('2027-03-15T14:30', 'America/New_York');
+  assert.equal(isoToZonedInput(iso, 'America/New_York'), '2027-03-15T14:30');
 });

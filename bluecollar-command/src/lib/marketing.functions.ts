@@ -539,6 +539,7 @@ export const generateBatchPosts = createServerFn({ method: "POST" })
       windowEnd: string;
       objective: CampaignObjective;
       accountIds: string[];
+      mediaKind: "image" | "video" | "text";
     }) =>
       z
         .object({
@@ -558,6 +559,7 @@ export const generateBatchPosts = createServerFn({ method: "POST" })
             "support",
           ]),
           accountIds: z.array(z.string()),
+          mediaKind: z.enum(["image", "video", "text"]),
         })
         .parse(data),
   )

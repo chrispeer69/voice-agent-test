@@ -62,7 +62,11 @@ export async function generateWritingAssist(data: AssistRequest): Promise<{ text
       signal: AbortSignal.timeout(20_000),
     });
   } catch { throw new Error('Anthropic took too long to respond. Try again.'); }
-  if (!response.ok) throw new Error(`Anthropic could not generate writing help (${response.status}). Check the Social Planner API key and billing.`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null) as { error?: { type?: string; message?: string } } | null;
+    const reason = failure?.error?.message?.slice(0, 300);
+    throw new Error(reason ? `Anthropic: ${reason}` : `Anthropic could not generate writing help (${response.status}).`);
+  }
   const body = await response.json() as { content?: Array<{ type?: string; text?: string }> };
   let text = (body.content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n').trim();
   if (data.mode === 'idea') text = text.replace(/^[-*\d.\s]+/, '').split('\n')[0]?.replace(/^["'“”]+|["'“”]+$/g, '').trim() || '';

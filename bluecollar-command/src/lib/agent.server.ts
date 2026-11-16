@@ -363,7 +363,7 @@ export async function generateMedia(
   const agentMessage =
     `Generate a high-quality ${type} visual for this social media post.\n` +
     `Visual direction: ${prompt}.\n` +
-    `Use your image generation tool to produce the visual asset now.`;
+    `Use your ${type === 'video' ? 'video' : 'image'} generation tool to produce the visual asset now. Return the generated media file.`;
 
   const result = await runAgentTurn(brandId, agentMessage, previousSessionId);
 
@@ -371,7 +371,7 @@ export async function generateMedia(
 
   for (const m of result.generatedMedia ?? []) {
     const url = m.url && /^https?:\/\//.test(m.url) ? m.url : undefined;
-    if (url) {
+    if (url && (type === 'image' || m.type?.toLowerCase().includes('video') || /\.(mp4|mov|webm)(?:\?|$)/i.test(url))) {
       mediaUrl = url;
       break;
     }
@@ -380,7 +380,7 @@ export async function generateMedia(
   if (!mediaUrl) {
     for (const a of result.attachments ?? []) {
       const url = a.url && /^https?:\/\//.test(a.url) ? a.url : undefined;
-      if (url) {
+      if (url && (type === 'image' || a.type?.toLowerCase().includes('video') || /\.(mp4|mov|webm)(?:\?|$)/i.test(url))) {
         mediaUrl = url;
         break;
       }
@@ -388,16 +388,16 @@ export async function generateMedia(
   }
 
   if (!mediaUrl && result.reply) {
-    const urlRegex = /https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|webp|gif)/i;
+    const urlRegex = type === 'video' ? /https?:\/\/[^\s"'<>]+\.(?:mp4|mov|webm)/i : /https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|webp|gif)/i;
     const m = result.reply.match(urlRegex);
     if (m) mediaUrl = m[0];
   }
 
   const error = result.error
-    ? `Image generation failed: ${result.error}`
+    ? `${type === 'video' ? 'Video' : 'Image'} generation failed: ${result.error}`
     : mediaUrl
       ? undefined
-      : "The agent did not return a generated image. Check the agent configuration and scopes in Settings.";
+      : `The agent did not return a generated ${type}. Check its ${type} generation capability in GHL Agent Studio.`;
 
   return {
     executionId: result.executionId,

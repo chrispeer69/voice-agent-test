@@ -20,7 +20,7 @@ import {
   validateCaption,
 } from "./caption-clean.server";
 import { fetchSocialAccounts, frameCaptionPrompt } from "./marketing.server";
-import { runCombinedTurn } from "./agent.server";
+import { generateMedia, runCombinedTurn } from "./agent.server";
 import { planBatchTimes } from './batch-schedule';
 
 function delay(ms: number): Promise<void> {
@@ -37,6 +37,7 @@ export async function buildBatchPosts(params: {
   windowEnd: string;
   objective: CampaignObjective;
   accountIds: string[];
+  mediaKind: "image" | "video" | "text";
 }): Promise<{ posts: SocialPost[]; error?: string }> {
   await requireSession();
   const { brandId, brief, objective, accountIds, startDate, days, windowStart, windowEnd } = params;
@@ -49,6 +50,8 @@ export async function buildBatchPosts(params: {
   const platforms = accountIds
     .map((id) => accounts.find((a) => a.id === id)?.platform)
     .filter((x): x is Platform => !!x);
+  if (params.mediaKind === 'video' && platforms.includes('google')) throw new Error('Google Business Profile does not support video posts. Remove that account or choose photos.');
+  if (params.mediaKind === 'text' && platforms.includes('instagram')) throw new Error('Instagram requires an image or video. Remove that account or choose a visual format.');
 
   // Do NOT inject invented brand descriptions here — the configured brand agent
   // is the single source of brand voice and positioning. We only name the brand
@@ -81,7 +84,7 @@ export async function buildBatchPosts(params: {
     const instruction =
       `Post type: ${angle.type} (${angle.desc}). Marketing objective: ${objective}. ` +
       `${brief ? `Campaign details / promo offer: ${brief}. ` : ""}` +
-      `Also generate one matching visual image for this post using your image tool.`;
+      (params.mediaKind === 'image' ? 'Also generate one matching visual image for this post using your image tool.' : 'Return the caption only. Do not generate a visual in this turn.');
     const prompt = frameCaptionPrompt(brandId, instruction);
 
     // Pace the calls so we don't hammer the agent API and trip rate limits.
@@ -179,9 +182,14 @@ export async function buildBatchPosts(params: {
         : `${brandName} ${angle.type.charAt(0).toUpperCase() + angle.type.slice(1)}`);
 
     const now = new Date().toISOString();
-    const mediaItems: MediaItem[] = turn.mediaUrl
-      ? [{ id: `m_${uid("m")}`, url: turn.mediaUrl, type: "image", caption: finalTitle }]
-      : [];
+    let mediaUrl = params.mediaKind === 'image' ? turn.mediaUrl : undefined;
+    if (params.mediaKind === 'video') {
+      const video = await generateMedia(brandId, `Create a short, natural social video for: ${finalTitle}. ${brief}. No unverified claims or text overlays.`, 'video');
+      if (!video.mediaUrl) { batchError = video.error || 'The GHL agent did not return a video.'; break; }
+      mediaUrl = video.mediaUrl;
+    }
+    if (params.mediaKind === 'image' && !mediaUrl) { batchError = 'The GHL agent did not return an image. Check its image generation capability.'; break; }
+    const mediaItems: MediaItem[] = mediaUrl ? [{ id: `m_${uid("m")}`, url: mediaUrl, type: params.mediaKind === 'video' ? 'video' : 'image', caption: finalTitle }] : [];
 
     posts.push({
       id: `batch_${uid("bp")}`,
@@ -191,7 +199,7 @@ export async function buildBatchPosts(params: {
       accountIds,
       platforms,
       objective,
-      format: "single_image",
+      format: params.mediaKind === 'image' ? 'single_image' : params.mediaKind === 'video' ? 'video' : 'text',
       title: finalTitle,
       body,
       cta: undefined,
@@ -222,12 +230,13 @@ export async function regenerateBatchPost(post: SocialPost): Promise<{
   error?: string;
 }> {
   await requireSession();
+  const mediaKind = post.format === 'video' ? 'video' : post.format === 'text' ? 'text' : 'image';
   const instruction =
-    `Regenerate this social media post with fresh, on-brand copy and a new matching visual.\n` +
+    `Regenerate this social media post with fresh, on-brand copy.\n` +
     `Post type: ${post.type}. ` +
     `${post.offer ? `Offer details: ${post.offer}. ` : ""}` +
     `Respond with ONLY a JSON object: {"title": "short headline", "body": "the full caption text"}. ` +
-    `Also generate one matching visual image using your image tool.`;
+    (mediaKind === 'image' ? 'Also generate one matching visual image using your image tool.' : 'Return the caption only. Do not generate a visual in this turn.');
   const prompt = frameCaptionPrompt(post.brandId, instruction);
   const turn = await runCombinedTurn(post.brandId, prompt, undefined);
   const reply = (turn.reply || "").trim();
@@ -274,8 +283,14 @@ export async function regenerateBatchPost(post: SocialPost): Promise<{
     .trim();
   const finalTitle = cleanTitle || post.title;
 
-  const mediaItems = turn.mediaUrl
-    ? [{ id: `m_${uid("m")}`, url: turn.mediaUrl, type: "image" as const, caption: finalTitle }]
+  let mediaUrl = mediaKind === 'image' ? turn.mediaUrl : undefined;
+  if (mediaKind === 'video') {
+    const video = await generateMedia(post.brandId, `Create a short, natural social video for: ${finalTitle}. No unverified claims or text overlays.`, 'video');
+    if (!video.mediaUrl) return { post, error: video.error || 'The agent did not return a video.' };
+    mediaUrl = video.mediaUrl;
+  }
+  const mediaItems = mediaKind === 'text' ? [] : mediaUrl
+    ? [{ id: `m_${uid("m")}`, url: mediaUrl, type: mediaKind === 'video' ? 'video' as const : 'image' as const, caption: finalTitle }]
     : post.media;
   return {
     post: {

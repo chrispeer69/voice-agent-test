@@ -13,7 +13,7 @@ process.env.GHL_PRIVATE_INTEGRATION_TOKEN = 'test-token';
 process.env.GHL_LOCATION_ID = 'test-location';
 process.env.CONVINI_AGENT_ID = 'convini-agent';
 process.env.USTOW_AGENT_ID = 'ustow-agent';
-const modules = ['types','marketing-store.server','ghl-client.server','social-post-contract','caption-clean.server','agent.server','marketing.server','anthropic-assist.server'];
+const modules = ['types','marketing-store.server','ghl-client.server','social-post-contract','caption-clean.server','agent.server','marketing.server','anthropic-assist.server','batch-schedule','batch.server'];
 for (const name of modules) {
   const source = readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/from (["'])\.\/([^"']+)\1/g, 'from "./$2.mjs"');
@@ -27,6 +27,7 @@ const { store, updateStore } = await load('marketing-store.server');
 const api = await load('marketing.server');
 const { runAgentTurn } = await load('agent.server');
 const { generateWritingAssist, getSavedAgentDetails } = await load('anthropic-assist.server');
+const { buildBatchPosts } = await load('batch.server');
 const contract = await load('social-post-contract');
 const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; rmSync(directory, { recursive: true, force: true }); });
@@ -225,8 +226,25 @@ test('Anthropic writing help uses saved brand facts and stores GHL agent metadat
     assert.equal((await generateWritingAssist(request)).text, 'Show a practical vehicle care tip.');
     assert.equal(metadataReads, 1);
     assert.equal(anthropicCalls, 2);
+    globalThis.fetch = async () => Response.json({ error: { type: 'invalid_request_error', message: 'You have reached your specified API usage limits.' } }, { status: 400 });
+    await assert.rejects(generateWritingAssist(request), /specified API usage limits/);
   } finally {
     globalThis.fetch = previousFetch;
     delete process.env.ANTHROPIC_API_KEY;
   }
+});
+
+test('batch media choice controls text, photo, and video generation without posting', async () => {
+  process.env.GHL_TIMEZONE = 'America/New_York';
+  const base = { brandId: 'convini', brief: 'Helpful driver tip', count: 1, startDate: '2027-03-15', days: 1, windowStart: '09:00', windowEnd: '18:00', objective: 'awareness', accountIds: [account.id] };
+  const text = await buildBatchPosts({ ...base, mediaKind: 'text' });
+  assert.equal(text.posts.length, 1);
+  assert.equal(text.posts[0].format, 'text');
+  assert.equal(text.posts[0].media.length, 0);
+  const photo = await buildBatchPosts({ ...base, mediaKind: 'image' });
+  assert.equal(photo.posts.length, 0);
+  assert.match(photo.error, /did not return an image/);
+  const video = await buildBatchPosts({ ...base, mediaKind: 'video' });
+  assert.equal(video.posts.length, 0);
+  assert.match(video.error, /did not return a generated video/);
 });

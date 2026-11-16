@@ -4,12 +4,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   CalendarRange,
-  Check,
   X,
   CalendarClock,
   Loader2,
-  Image as ImageIcon,
-  Save,
   FileText,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -64,9 +61,11 @@ function BatchPage() {
   const [windowEnd, setWindowEnd] = useState('18:00');
   const [postCount, setPostCount] = useState(5);
   const [brief, setBrief] = useState("");
+  const [mediaKind, setMediaKind] = useState<'image' | 'video' | 'text'>('image');
   const suggestedIdeas = useRef<string[]>([]);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [generated, setGenerated] = useState<SocialPost[]>([]);
+  const [activePostIndex, setActivePostIndex] = useState(0);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [agentChosen, setAgentChosen] = useState(false);
@@ -139,12 +138,14 @@ function BatchPage() {
           windowEnd,
           objective,
           accountIds: selectedAccountIds,
+          mediaKind,
         },
       });
     },
     onSuccess: (data) => {
       if (!data.posts.length) { toast.error(data.error || 'The agent did not create any posts. Please try again.'); return; }
       setGenerated(data.posts);
+      setActivePostIndex(0);
       setStep(5);
       if (data.error) {
         toast.error(`Agent notice: ${data.error}`, { duration: 8000 });
@@ -169,6 +170,7 @@ function BatchPage() {
   }
   function removePost(id: string) {
     setGenerated((prev) => prev.filter((p) => p.id !== id));
+    setActivePostIndex(index => Math.max(0, Math.min(index, generated.length - 2)));
   }
   async function regeneratePostById(id: string) {
     const target = generated.find((p) => p.id === id);
@@ -245,7 +247,7 @@ function BatchPage() {
         description={`Generate and review several posts for ${brand.name}, then save or schedule them.`}
       />
 
-      <div className="mx-auto mt-8 max-w-5xl">
+      <div className="mx-auto mt-8 max-w-6xl">
         <div className="mb-3 flex justify-between text-sm"><span className="font-semibold text-primary">Step {step} of 5</span><span className="text-muted-foreground">{['', 'Posting plan', 'Knowledge base', 'Content brief', 'Social accounts', 'Review posts'][step]}</span></div>
         <div className="mb-7 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${step / 5 * 100}%` }} /></div>
         {/* Config */}
@@ -259,6 +261,7 @@ function BatchPage() {
             {step === 3 && <label htmlFor="batch-goal" className="block text-sm font-semibold">What do you want people to do?<select id="batch-goal" className="input mt-2 w-full bg-white" value={objective} onChange={e => setObjective(e.target.value as CampaignObjective)}>{OBJECTIVES.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}
             {step === 1 && <div className="space-y-6"><p className="text-lg leading-relaxed">I want to make <input aria-label="Number of posts" type="number" min={1} max={20} value={postCount} onChange={e => setPostCount(Number(e.target.value))} className="mx-1 w-20 rounded-lg border border-border bg-input px-2 py-1 text-center font-semibold" /> posts in <input aria-label="Number of days" type="number" min={1} max={90} value={days} onChange={e => setDays(Number(e.target.value))} className="mx-1 w-20 rounded-lg border border-border bg-input px-2 py-1 text-center font-semibold" /> days.</p><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">From<input aria-label="Window start" type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)} className="input mt-2" /></label><label className="text-sm font-medium">To<input aria-label="Window end" type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)} className="input mt-2" /></label></div><label className="block text-sm font-medium">Starting on<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input mt-2" /></label><p className="rounded-lg border border-border bg-accent/40 p-3 text-sm text-muted-foreground">Posts will be spread across these days, only between {windowStart} and {windowEnd} in {timezoneQuery.data?.timezone || 'the GHL subaccount timezone'}.</p>{!timezoneQuery.isLoading && !timezoneQuery.data?.timezone && <p role="alert" className="text-sm text-destructive">Set GHL_TIMEZONE to your GHL subaccount timezone before continuing.</p>}</div>}
             {step === 3 && <div><label htmlFor="batch-brief" className="block text-sm font-semibold">What should the posts be about?<textarea id="batch-brief" className="mt-2 min-h-36 w-full resize-y rounded-xl border border-border bg-white p-4 text-base shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" value={brief} onChange={e => setBrief(e.target.value)} placeholder="Example: helpful tips for drivers in Columbus" /></label><button type="button" disabled={suggestIdea.isPending || improveBrief.isPending} onClick={() => suggestIdea.mutate()} className="mt-3 text-sm text-primary hover:underline disabled:opacity-50">{suggestIdea.isPending ? 'Finding a new idea…' : brief ? 'Suggest another idea' : 'Suggest an idea'}</button>{briefWordCount >= 8 && <button type="button" disabled={suggestIdea.isPending || improveBrief.isPending} onClick={() => improveBrief.mutate()} className="ml-5 text-sm text-primary hover:underline disabled:opacity-50">{improveBrief.isPending ? 'Improving your prompt…' : 'Improve prompt with AI'}</button>}{improveBrief.isPending && <p role="status" className="mt-3 text-sm text-muted-foreground">Expanding your idea into a clearer brief for the batch…</p>}</div>}
+            {step === 3 && <fieldset className="mt-7"><legend className="text-sm font-semibold text-foreground">What kind of content?</legend><div className="mt-3 grid gap-3 sm:grid-cols-3">{([['image', 'AI photo', 'Caption and generated photo'], ['video', 'AI video', 'Caption and generated video'], ['text', 'Text only', 'Caption without media']] as const).map(([id, label, hint]) => <label key={id} className={`flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-4 ${mediaKind === id ? 'border-primary bg-primary/5' : 'border-border'}`}><input type="radio" name="batch-media-kind" value={id} checked={mediaKind === id} onChange={() => setMediaKind(id)} className="mt-1" /><span><span className="block text-sm font-semibold">{label}</span><span className="mt-1 block text-xs text-muted-foreground">{hint}</span></span></label>)}</div><p className="mt-2 text-xs text-muted-foreground">Video requires video generation enabled on the selected GHL agent and takes longer. You can review every result before saving.</p></fieldset>}
 
             {step === 4 && <><SimpleAccountPicker
               accounts={accounts}
@@ -273,14 +276,16 @@ function BatchPage() {
                 Select at least one connected account to generate posts for it.
               </p>
             )}
+            {mediaKind === 'video' && accounts.some(account => selectedAccountIds.includes(account.id) && account.platform === 'google') && <p role="alert" className="text-sm text-destructive">Google Business Profile does not accept video posts. Remove that account or choose AI photo.</p>}
+            {mediaKind === 'text' && accounts.some(account => selectedAccountIds.includes(account.id) && account.platform === 'instagram') && <p role="alert" className="text-sm text-destructive">Instagram requires a photo or video. Remove that account or choose a visual format.</p>}
             <p className="text-xs text-muted-foreground">
-              The brand AI writes each caption and generates a visual. The batch appears on the
+              The brand AI writes each caption{mediaKind === 'text' ? '' : ` and generates a ${mediaKind === 'video' ? 'video' : 'photo'}`}. The batch appears on the
               calendar preview before anything is saved. You can edit, remove, re-prompt images, or
               reschedule each post individually.
             </p>
-            {generateMut.isPending && <div role="status" aria-live="polite" className="rounded-xl border border-primary/30 bg-primary/5 p-5"><div className="flex items-center gap-3 font-semibold"><Loader2 className="h-5 w-5 animate-spin text-primary" /> Creating {postCount} posts…</div><p className="mt-2 text-sm text-muted-foreground">Writing captions and creating images. This can take a few minutes. {generationSeconds}s elapsed.</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-1/3 animate-pulse rounded-full bg-primary" /></div></div>}</>}
+            {generateMut.isPending && <div role="status" aria-live="polite" className="rounded-xl border border-primary/30 bg-primary/5 p-5"><div className="flex items-center gap-3 font-semibold"><Loader2 className="h-5 w-5 animate-spin text-primary" /> Creating {postCount} posts…</div><p className="mt-2 text-sm text-muted-foreground">Writing captions{mediaKind === 'text' ? '' : ` and creating ${mediaKind === 'video' ? 'videos' : 'photos'}`}. This can take a few minutes. {generationSeconds}s elapsed.</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-1/3 animate-pulse rounded-full bg-primary" /></div></div>}</>}
           </div>
-          <div className="mt-10 flex items-center justify-between gap-3 border-t border-border pt-6"><button type="button" disabled={step === 1 || generateMut.isPending} onClick={() => setStep(value => value - 1)} className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold disabled:opacity-40">Back</button><button type="button" disabled={generateMut.isPending || (step === 1 && (!timezoneQuery.data?.timezone || !startDate || !Number.isInteger(postCount) || postCount < 1 || postCount > 20 || !Number.isInteger(days) || days < 1 || days > 90 || windowStart >= windowEnd)) || (step === 2 && !agentChosen) || (step === 3 && !brief.trim()) || (step === 4 && selectedAccountIds.length === 0)} onClick={() => step === 4 ? generateMut.mutate() : setStep(value => value + 1)} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{generateMut.isPending ? 'Creating posts…' : step === 4 ? 'Generate posts' : 'Continue'}</button></div>
+          <div className="mt-10 flex items-center justify-between gap-3 border-t border-border pt-6"><button type="button" disabled={step === 1 || generateMut.isPending} onClick={() => setStep(value => value - 1)} className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold disabled:opacity-40">Back</button><button type="button" disabled={generateMut.isPending || (step === 1 && (!timezoneQuery.data?.timezone || !startDate || !Number.isInteger(postCount) || postCount < 1 || postCount > 20 || !Number.isInteger(days) || days < 1 || days > 90 || windowStart >= windowEnd)) || (step === 2 && !agentChosen) || (step === 3 && !brief.trim()) || (step === 4 && (selectedAccountIds.length === 0 || mediaKind === 'video' && accounts.some(account => selectedAccountIds.includes(account.id) && account.platform === 'google') || mediaKind === 'text' && accounts.some(account => selectedAccountIds.includes(account.id) && account.platform === 'instagram')))} onClick={() => step === 4 ? generateMut.mutate() : setStep(value => value + 1)} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{generateMut.isPending ? 'Creating posts…' : step === 4 ? 'Generate posts' : 'Continue'}</button></div>
         </Card>}
 
         {/* Preview / generated batch */}
@@ -296,48 +301,23 @@ function BatchPage() {
             </Card>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-foreground">
-                  Generated batch · {generated.length} posts
-                </h2>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => saveAsDraftsMut.mutate()}
-                    disabled={saveAsDraftsMut.isPending}
-                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
-                  >
-                    {saveAsDraftsMut.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4 text-primary" />
-                    )}{" "}
-                    Save as drafts
-                  </button>
-                  <button
-                    onClick={() => saveAndScheduleMut.mutate()}
-                    disabled={saveAndScheduleMut.isPending}
-                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent"
-                  >
-                    <Check className="h-4 w-4 text-success" /> {saveAndScheduleMut.isPending ? "Scheduling…" : "Schedule all"}
-                  </button>
-                </div>
-              </div>
+              <h2 className="text-base font-semibold text-foreground">Review {generated.length} posts</h2>
 
-              {/* Mini calendar preview */}
-              <BatchCalendarPreview posts={generated} />
-
-              {generated.map((p) => (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3"><button type="button" disabled={activePostIndex === 0} onClick={() => setActivePostIndex(index => index - 1)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold disabled:opacity-40">← Previous</button><span className="text-sm font-semibold">Post {activePostIndex + 1} of {generated.length}</span><button type="button" disabled={activePostIndex >= generated.length - 1} onClick={() => setActivePostIndex(index => index + 1)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold disabled:opacity-40">Next →</button></div>
+              {generated[activePostIndex] && (
                 <BatchPostCard
-                  key={p.id}
-                  post={p}
+                  key={generated[activePostIndex].id}
+                  post={generated[activePostIndex]}
                   brandId={brand.id}
+                  timezone={timezoneQuery.data?.timezone || 'America/New_York'}
                   onUpdate={updatePost}
                   onRemove={removePost}
-                  onRegenerate={() => regeneratePostById(p.id)}
+                  onRegenerate={() => regeneratePostById(generated[activePostIndex]!.id)}
                   onRequestMedia={(params) => requestMediaFn({ data: params })}
                   onViewImage={(url) => setExpandedImage(url)}
                 />
-              ))}
+              )}
+              <div className="flex flex-wrap justify-center gap-2" aria-label="Choose a post to review">{generated.map((post, index) => <button key={post.id} type="button" aria-label={`Review post ${index + 1}`} aria-current={index === activePostIndex ? 'step' : undefined} onClick={() => setActivePostIndex(index)} className={`h-9 min-w-9 rounded-lg border px-2 text-xs font-semibold ${index === activePostIndex ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:border-primary'}`}>{index + 1}</button>)}</div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -401,59 +381,6 @@ function BatchPage() {
         .input:focus { border-color: var(--color-ring); box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 30%, transparent); }
       `}</style>
     </div>
-  );
-}
-
-function BatchCalendarPreview({ posts }: { posts: SocialPost[] }) {
-  if (posts.length === 0) return null;
-  const dates = posts
-    .map((p) => (p.scheduledAt ? new Date(p.scheduledAt) : null))
-    .filter((d): d is Date => d !== null);
-  if (dates.length === 0) return null;
-  const min = new Date(Math.min(...dates.map((d) => d.getTime())));
-  const max = new Date(Math.max(...dates.map((d) => d.getTime())));
-  const days: Date[] = [];
-  const cur = new Date(min);
-  cur.setHours(0, 0, 0, 0);
-  while (cur <= max) {
-    days.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-  if (days.length > 31) return null;
-
-  return (
-    <Card className="p-3">
-      <div className="text-xs font-medium text-muted-foreground">Calendar preview</div>
-      <div className="mt-2 flex gap-1 overflow-x-auto">
-        {days.map((d) => {
-          const dayPosts = posts.filter((p) => {
-            const pd = p.scheduledAt ? new Date(p.scheduledAt) : null;
-            return pd && pd.toDateString() === d.toDateString();
-          });
-          return (
-            <div
-              key={d.toISOString()}
-              className="flex min-w-14 flex-1 flex-col rounded-lg border border-border bg-background/40 p-1.5"
-            >
-              <div className="text-center text-[10px] font-medium text-muted-foreground">
-                {d.toLocaleDateString("en", { month: "numeric", day: "numeric" })}
-              </div>
-              <div className="mt-1 space-y-1">
-                {dayPosts.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center gap-1 rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary"
-                  >
-                    {p.media[0]?.url ? <ImageIcon className="h-2.5 w-2.5 shrink-0" /> : null}
-                    <span className="truncate">{p.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
   );
 }
 
