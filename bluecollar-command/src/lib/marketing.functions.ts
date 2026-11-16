@@ -48,6 +48,7 @@ import { requireSession } from "./auth.server";
 import { store, updateStore } from "./marketing-store.server";
 import { buildBatchPosts, regenerateBatchPost } from "./batch.server";
 import { ghlFetch } from "./ghl-client.server";
+import { generateWritingAssist, getSavedAgentDetails } from "./anthropic-assist.server";
 
 const brandIdSchema = z.union([z.enum(["convini", "ustow"]), z.uuid()]);
 
@@ -62,17 +63,7 @@ export const assistPostPrompt = createServerFn({ method: "POST" })
   }).parse(data))
   .handler(async ({ data }) => {
     await requireSession();
-    const profile = store().brandProfiles[data.brandId];
-    const guidance = [profile?.audience && `Audience: ${profile.audience}`, profile?.tone && `Tone: ${profile.tone}`, profile?.businessDetails && `Verified facts: ${profile.businessDetails}`, profile?.avoid && `Avoid: ${profile.avoid}`].filter(Boolean).join('\n');
-    const message = data.mode === 'idea'
-      ? `Suggest ONE new, specific ${data.context === 'batch' ? 'theme for several social posts' : 'social post topic'} for this business. Return one short sentence only. Do not use tools or create posts. Use verified facts; do not invent offers, prices or claims. ${data.input ? `Avoid repeating the current topic: ${data.input}.` : ''} ${data.previousIdeas.length ? `Use a different angle from: ${data.previousIdeas.join(' | ')}.` : ''} ${guidance}`
-      : `Expand the user's idea into a useful creative brief for ${data.context === 'batch' ? 'a series of social posts' : 'one social post'}. Keep the original intent and facts. Add suggested audience angle, key message, visual direction and call to action. Write 2–4 concise sentences, plain text only, under 500 characters. Do not use tools or create posts. Do not invent prices, guarantees, services, locations, or testimonials. User idea: ${data.input}. ${guidance}`;
-    const result = await runAgentTurn(data.brandId, message, undefined, true);
-    if (result.error) throw new Error(result.error.includes('aborted') || result.error.includes('timeout') ? 'GHL took too long to respond. Try again.' : result.error);
-    let text = result.reply.trim().replace(/^```(?:text)?\s*/i, '').replace(/```$/,'').trim();
-    if (data.mode === 'idea') text = text.replace(/^[-*\d.\s]+/, '').split('\n')[0]?.replace(/^["'“”]+|["'“”]+$/g, '').trim() || '';
-    if (!text) throw new Error('The agent did not return an idea. Try again.');
-    return { text: text.slice(0, data.mode === 'idea' ? 250 : 700) };
+    return generateWritingAssist(data);
   });
 
 export const getAvailableAgents = createServerFn({ method: "GET" }).handler(async () => {
@@ -156,19 +147,7 @@ export const getBrandSetup = createServerFn({ method: "GET" })
   .validator((data: { brandId: BrandId }) => z.object({ brandId: brandIdSchema }).parse(data))
   .handler(async ({ data }) => {
     await requireSession();
-    const agentId = data.brandId === "convini" ? process.env["CONVINI_AGENT_ID"] : data.brandId === "ustow" ? process.env["USTOW_AGENT_ID"] : data.brandId;
-    let agent: { name: string; description: string; tools: string[]; knowledgeBaseIds: string[] } | null = null;
-    if (agentId) {
-      const response = await ghlFetch(`https://services.leadconnectorhq.com/agent-studio/managed-agents/${encodeURIComponent(agentId)}?locationId=${encodeURIComponent(process.env["GHL_LOCATION_ID"] || "")}`, {
-        headers: { Authorization: `Bearer ${process.env["GHL_PRIVATE_INTEGRATION_TOKEN"]}`, Version: "v3", Accept: "application/json" },
-      });
-      if (response.ok) {
-        const raw = await response.json();
-        agent = { name: String(raw.name || ""), description: String(raw.description || ""),
-          tools: Array.isArray(raw.tools) ? raw.tools.map(String) : [],
-          knowledgeBaseIds: Array.isArray(raw.knowledgeBaseIds) ? raw.knowledgeBaseIds.map(String) : [] };
-      }
-    }
+    const agent = await getSavedAgentDetails(data.brandId);
     return { profile: store().brandProfiles[data.brandId] || { audience: "", tone: "", businessDetails: "", defaultCta: "", avoid: "" }, agent };
   });
 

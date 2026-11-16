@@ -4,13 +4,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { Brand, BrandId } from "./types";
 import { BRANDS, getBrand } from "./types";
 import { useQuery } from "@tanstack/react-query";
-import { getAvailableAgents } from "./marketing.functions";
+import { getAvailableAgents, getBrandSetup } from "./marketing.functions";
 
 interface BrandContextValue {
   brandId: BrandId;
@@ -29,6 +30,7 @@ const STORAGE_KEY = "bcc:brandId";
 
 export function BrandProvider({ children }: { children: ReactNode }) {
   const [brandId, setBrandIdState] = useState<BrandId>("convini");
+  const savedAgentDetails = useRef(new Set<BrandId>());
   const agents = useQuery({ queryKey: ["available-ghl-agents"], queryFn: () => getAvailableAgents(), staleTime: 60_000, retry: false });
   const agentOptions = useMemo(() => {
     return (agents.data ?? []).map(agent => {
@@ -41,6 +43,12 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     });
   }, [agents.data]);
   const brands = agentOptions.length ? agentOptions : BRANDS;
+
+  useEffect(() => {
+    if (!agentOptions.some(option => option.id === brandId) || savedAgentDetails.current.has(brandId)) return;
+    savedAgentDetails.current.add(brandId);
+    void getBrandSetup({ data: { brandId } }).catch(() => { savedAgentDetails.current.delete(brandId); });
+  }, [agentOptions, brandId]);
 
   // Read stored brand after hydration to avoid SSR mismatch.
   useEffect(() => {

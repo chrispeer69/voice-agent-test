@@ -24,6 +24,7 @@ export interface Store {
   deliveries: Record<string, Delivery>;
   accountBrands: Record<string, BrandId>;
   brandProfiles: Partial<Record<BrandId, { audience: string; tone: string; businessDetails: string; defaultCta: string; avoid: string }>>;
+  agentSnapshots: Partial<Record<BrandId, { name: string; description: string; tools: string[]; knowledgeBaseIds: string[]; syncedAt: string }>>;
   posts: SocialPost[];
   campaigns: Campaign[];
   comments: Comment[];
@@ -48,12 +49,12 @@ function db(): DatabaseSync {
 
 export function store(): Store {
   const row = db().prepare("SELECT data FROM planner_state WHERE id=1").get() as { data: string } | undefined;
-  if (!row) return { deliveries: {}, accountBrands: {}, brandProfiles: {}, posts: [], campaigns: [], comments: [], sessions: new Map(), recommendations: [] };
+  if (!row) return { deliveries: {}, accountBrands: {}, brandProfiles: {}, agentSnapshots: {}, posts: [], campaigns: [], comments: [], sessions: new Map(), recommendations: [] };
   const data = JSON.parse(row.data);
   for (const key of ["posts", "campaigns", "comments", "sessions", "recommendations"]) {
     if (!Array.isArray(data[key])) throw new Error(`Planner database contains invalid ${key}; restore a backup.`);
   }
-  return { ...data, deliveries: data.deliveries || {}, accountBrands: data.accountBrands || {}, brandProfiles: data.brandProfiles || {}, sessions: new Map(data.sessions) };
+  return { ...data, deliveries: data.deliveries || {}, accountBrands: data.accountBrands || {}, brandProfiles: data.brandProfiles || {}, agentSnapshots: data.agentSnapshots || {}, sessions: new Map(data.sessions) };
 }
 
 /** Mutations are synchronous and transactional; failed writes never alter the stored state. */
