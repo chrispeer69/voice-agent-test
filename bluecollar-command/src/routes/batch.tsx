@@ -25,7 +25,7 @@ import {
   getPlannerTimezone,
   requestMedia,
   regeneratePost,
-  sendAgentMessage,
+  assistPostPrompt,
 } from "@/lib/marketing.functions";
 import { Card, PageHeader } from "@/components/shared";
 import { SimpleAccountPicker } from "@/components/simple-account-picker";
@@ -101,20 +101,22 @@ function BatchPage() {
   const generateBatchFn = useServerFn(generateBatchPosts);
   const requestMediaFn = useServerFn(requestMedia);
   const regenerateFn = useServerFn(regeneratePost);
-  const sendAgentMessageFn = useServerFn(sendAgentMessage);
+  const assist = useServerFn(assistPostPrompt);
   const suggestIdea = useMutation({
     mutationFn: async () => {
-      const previous = suggestedIdeas.current.slice(-8);
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const result = await sendAgentMessageFn({ data: { brandId: brand.id, message: `Suggest exactly one fresh theme for a batch of ${postCount} social posts for ${brand.name}. Return only one short, specific idea sentence, no caption, list, or hashtags. Use verified business knowledge. ${previous.length ? `Avoid these previous ideas: ${previous.join(' | ')}.` : ''} ${brief.trim() ? `Also avoid repeating: ${brief.trim()}.` : ''} ${attempt ? 'Use a different angle from your last response.' : ''}` } });
-        const idea = result.reply?.trim().replace(/^[-*\d.\s]+/, '').replace(/^[\s'"“”]+|[\s'"“”]+$/g, '').split('\n')[0]?.trim() || '';
-        if (idea && !previous.some(old => old.toLowerCase() === idea.toLowerCase()) && idea.toLowerCase() !== brief.trim().toLowerCase()) return idea;
-      }
-      throw new Error('The agent repeated an idea. Try again.');
+      const result = await assist({ data: { brandId: brand.id, mode: 'idea', context: 'batch', input: brief, previousIdeas: suggestedIdeas.current.slice(-8) } });
+      if (suggestedIdeas.current.some(old => old.toLowerCase() === result.text.toLowerCase()) || result.text.toLowerCase() === brief.trim().toLowerCase()) throw new Error('The agent repeated an idea. Try again.');
+      return result.text;
     },
     onSuccess: idea => { suggestedIdeas.current.push(idea); setBrief(idea); },
     onError: error => toast.error(error instanceof Error ? error.message : 'Could not suggest an idea.'),
   });
+  const improveBrief = useMutation({
+    mutationFn: async () => (await assist({ data: { brandId: brand.id, mode: 'improve', context: 'batch', input: brief, previousIdeas: [] } })).text,
+    onSuccess: text => setBrief(text),
+    onError: error => toast.error(error instanceof Error ? error.message : 'Could not improve the brief.'),
+  });
+  const briefWordCount = brief.trim().split(/\s+/).filter(Boolean).length;
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["posts", brand.id] });
@@ -256,7 +258,7 @@ function BatchPage() {
             {step === 2 && <><p className="text-sm text-muted-foreground">Choose the GHL AI agent for this business.</p><AgentPicker options={agentOptions} selectedId={agentChosen ? brand.id : null} loading={agentsLoading} error={agentsError} onRefresh={() => void refreshAgents()} onSelect={id => { setBrandId(id); setAgentChosen(true); setGenerated([]); suggestedIdeas.current = []; setBrief(''); setSelectedAccountIds([]); }} /></>}
             {step === 3 && <label htmlFor="batch-goal" className="block text-sm font-semibold">What do you want people to do?<select id="batch-goal" className="input mt-2 w-full bg-white" value={objective} onChange={e => setObjective(e.target.value as CampaignObjective)}>{OBJECTIVES.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}
             {step === 1 && <div className="space-y-6"><p className="text-lg leading-relaxed">I want to make <input aria-label="Number of posts" type="number" min={1} max={20} value={postCount} onChange={e => setPostCount(Number(e.target.value))} className="mx-1 w-20 rounded-lg border border-border bg-input px-2 py-1 text-center font-semibold" /> posts in <input aria-label="Number of days" type="number" min={1} max={90} value={days} onChange={e => setDays(Number(e.target.value))} className="mx-1 w-20 rounded-lg border border-border bg-input px-2 py-1 text-center font-semibold" /> days.</p><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">From<input aria-label="Window start" type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)} className="input mt-2" /></label><label className="text-sm font-medium">To<input aria-label="Window end" type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)} className="input mt-2" /></label></div><label className="block text-sm font-medium">Starting on<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input mt-2" /></label><p className="rounded-lg border border-border bg-accent/40 p-3 text-sm text-muted-foreground">Posts will be spread across these days, only between {windowStart} and {windowEnd} in {timezoneQuery.data?.timezone || 'the GHL subaccount timezone'}.</p>{!timezoneQuery.isLoading && !timezoneQuery.data?.timezone && <p role="alert" className="text-sm text-destructive">Set GHL_TIMEZONE to your GHL subaccount timezone before continuing.</p>}</div>}
-            {step === 3 && <div><label htmlFor="batch-brief" className="block text-sm font-semibold">What should the posts be about?<textarea id="batch-brief" className="mt-2 min-h-36 w-full resize-y rounded-xl border border-border bg-white p-4 text-base shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" value={brief} onChange={e => setBrief(e.target.value)} placeholder="Example: helpful tips for drivers in Columbus" /></label><button type="button" disabled={suggestIdea.isPending} onClick={() => suggestIdea.mutate()} className="mt-3 text-sm text-primary hover:underline disabled:opacity-50">{suggestIdea.isPending ? 'Finding a new idea…' : brief ? 'Suggest another idea' : 'Suggest an idea'}</button></div>}
+            {step === 3 && <div><label htmlFor="batch-brief" className="block text-sm font-semibold">What should the posts be about?<textarea id="batch-brief" className="mt-2 min-h-36 w-full resize-y rounded-xl border border-border bg-white p-4 text-base shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" value={brief} onChange={e => setBrief(e.target.value)} placeholder="Example: helpful tips for drivers in Columbus" /></label><button type="button" disabled={suggestIdea.isPending || improveBrief.isPending} onClick={() => suggestIdea.mutate()} className="mt-3 text-sm text-primary hover:underline disabled:opacity-50">{suggestIdea.isPending ? 'Finding a new idea…' : brief ? 'Suggest another idea' : 'Suggest an idea'}</button>{briefWordCount >= 8 && <button type="button" disabled={suggestIdea.isPending || improveBrief.isPending} onClick={() => improveBrief.mutate()} className="ml-5 text-sm text-primary hover:underline disabled:opacity-50">{improveBrief.isPending ? 'Improving your prompt…' : 'Improve prompt with AI'}</button>}{improveBrief.isPending && <p role="status" className="mt-3 text-sm text-muted-foreground">Expanding your idea into a clearer brief for the batch…</p>}</div>}
 
             {step === 4 && <><SimpleAccountPicker
               accounts={accounts}

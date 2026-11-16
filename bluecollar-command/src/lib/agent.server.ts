@@ -125,6 +125,7 @@ async function callEndpoint(
   token: string,
   message: string,
   sid?: string,
+  fast = false,
 ): Promise<{ ok: boolean; status: number; text: string }> {
   const idempotencyKey = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const body = JSON.stringify(ep.buildBody(message, sid));
@@ -132,7 +133,8 @@ async function callEndpoint(
   let lastStatus = 0;
   let lastText = "";
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  const maxRetries = fast ? 0 : MAX_RETRIES;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const res = await ghlFetch(ep.url, {
         method: "POST",
@@ -144,6 +146,7 @@ async function callEndpoint(
           Accept: "application/json",
         },
         body,
+        ...(fast ? { signal: AbortSignal.timeout(30_000) } : {}),
       });
       const text = await res.text();
       lastStatus = res.status;
@@ -152,7 +155,7 @@ async function callEndpoint(
       if (res.ok) return { ok: true, status: res.status, text };
 
       // Retry on rate-limit or transient server errors
-      if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
+      if ((res.status === 429 || res.status >= 500) && attempt < maxRetries) {
         const backoff = 1500 * (attempt + 1);
         console.warn(
           `[Agent] ${ep.name} ${res.status}, retry ${attempt + 1}/${MAX_RETRIES} after ${backoff}ms`,
@@ -163,7 +166,7 @@ async function callEndpoint(
       return { ok: false, status: res.status, text };
     } catch (err) {
       lastText = err instanceof Error ? err.message : String(err);
-      if (attempt < MAX_RETRIES) {
+      if (attempt < maxRetries) {
         const backoff = 1500 * (attempt + 1);
         console.warn(`[Agent] ${ep.name} network error, retry after ${backoff}ms: ${lastText}`);
         await delay(backoff);
@@ -187,6 +190,7 @@ export async function runAgentTurn(
   brandId: BrandId,
   message: string,
   previousSessionId?: string,
+  fast = false,
 ): Promise<AgentTurnResult> {
   await requireSession();
   const agentId = agentIdFor(brandId);
@@ -216,7 +220,7 @@ export async function runAgentTurn(
 
   for (const ep of order) {
     console.log(`[Agent Turn] Trying ${ep.name}: POST ${ep.url}`);
-    const result = await callEndpoint(ep, token, message, previousSessionId);
+    const result = await callEndpoint(ep, token, message, previousSessionId, fast);
 
     if (result.ok) {
       cachedEndpoints.set(agentId, ep.name); // cache the winner

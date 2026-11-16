@@ -51,6 +51,30 @@ import { ghlFetch } from "./ghl-client.server";
 
 const brandIdSchema = z.union([z.enum(["convini", "ustow"]), z.uuid()]);
 
+/** One fast Agent Studio turn for idea suggestions and brief expansion. */
+export const assistPostPrompt = createServerFn({ method: "POST" })
+  .validator((data: { brandId: BrandId; mode: "idea" | "improve"; context: "single" | "batch"; input: string; previousIdeas: string[] }) => z.object({
+    brandId: brandIdSchema,
+    mode: z.enum(["idea", "improve"]),
+    context: z.enum(["single", "batch"]),
+    input: z.string().max(1500),
+    previousIdeas: z.array(z.string().max(250)).max(8),
+  }).parse(data))
+  .handler(async ({ data }) => {
+    await requireSession();
+    const profile = store().brandProfiles[data.brandId];
+    const guidance = [profile?.audience && `Audience: ${profile.audience}`, profile?.tone && `Tone: ${profile.tone}`, profile?.businessDetails && `Verified facts: ${profile.businessDetails}`, profile?.avoid && `Avoid: ${profile.avoid}`].filter(Boolean).join('\n');
+    const message = data.mode === 'idea'
+      ? `Suggest ONE new, specific ${data.context === 'batch' ? 'theme for several social posts' : 'social post topic'} for this business. Return one short sentence only. Do not use tools or create posts. Use verified facts; do not invent offers, prices or claims. ${data.input ? `Avoid repeating the current topic: ${data.input}.` : ''} ${data.previousIdeas.length ? `Use a different angle from: ${data.previousIdeas.join(' | ')}.` : ''} ${guidance}`
+      : `Expand the user's idea into a useful creative brief for ${data.context === 'batch' ? 'a series of social posts' : 'one social post'}. Keep the original intent and facts. Add suggested audience angle, key message, visual direction and call to action. Write 2–4 concise sentences, plain text only, under 500 characters. Do not use tools or create posts. Do not invent prices, guarantees, services, locations, or testimonials. User idea: ${data.input}. ${guidance}`;
+    const result = await runAgentTurn(data.brandId, message, undefined, true);
+    if (result.error) throw new Error(result.error.includes('aborted') || result.error.includes('timeout') ? 'GHL took too long to respond. Try again.' : result.error);
+    let text = result.reply.trim().replace(/^```(?:text)?\s*/i, '').replace(/```$/,'').trim();
+    if (data.mode === 'idea') text = text.replace(/^[-*\d.\s]+/, '').split('\n')[0]?.replace(/^["'“”]+|["'“”]+$/g, '').trim() || '';
+    if (!text) throw new Error('The agent did not return an idea. Try again.');
+    return { text: text.slice(0, data.mode === 'idea' ? 250 : 700) };
+  });
+
 export const getAvailableAgents = createServerFn({ method: "GET" }).handler(async () => {
   await requireSession();
   const locationId = process.env["GHL_LOCATION_ID"];
