@@ -13,7 +13,7 @@ process.env.GHL_PRIVATE_INTEGRATION_TOKEN = 'test-token';
 process.env.GHL_LOCATION_ID = 'test-location';
 process.env.CONVINI_AGENT_ID = 'convini-agent';
 process.env.USTOW_AGENT_ID = 'ustow-agent';
-const modules = ['types','marketing-store.server','ghl-client.server','social-post-contract','caption-clean.server','agent.server','marketing.server','agent-metadata.server','batch-schedule','batch.server'];
+const modules = ['types','marketing-store.server','ghl-client.server','social-post-contract','caption-clean.server','agent.server','marketing.server','agent-metadata.server','batch-schedule','batch.server','planner-time'];
 for (const name of modules) {
   const source = readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/from (["'])\.\/([^"']+)\1/g, 'from "./$2.mjs"');
@@ -29,6 +29,7 @@ const { runAgentTurn } = await load('agent.server');
 const { getSavedAgentDetails } = await load('agent-metadata.server');
 const { buildBatchPosts } = await load('batch.server');
 const contract = await load('social-post-contract');
+const plannerTime = await load('planner-time');
 const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; rmSync(directory, { recursive: true, force: true }); });
 const account = { id: 'facebook-account', platform: 'facebook', name: 'Test Page', active: true, originId: 'native-page', profileId: 'profile-record' };
@@ -95,6 +96,13 @@ test('a remote-linked post disappears locally after deletion in GHL', async () =
 test('a successful GHL update can reuse the known draft ID', () => {
   assert.deepEqual(contract.parsePostWriteResponse({ success: true }, 'known-draft', 'scheduled'), { id: 'known-draft', status: 'scheduled' });
   assert.throws(() => contract.parsePostWriteResponse({ success: true }), /post ID/);
+});
+
+test('scheduling uses the subaccount time regardless of the viewer timezone', () => {
+  const iso = plannerTime.zonedToIso('2026-11-21T14:00', 'America/New_York');
+  assert.equal(iso, '2026-11-21T19:00:00.000Z');
+  assert.equal(plannerTime.localInputInZone(new Date(iso), 'America/New_York'), '2026-11-21T14:00');
+  assert.equal(plannerTime.localInputInZone(new Date(iso), 'Pacific/Auckland'), '2026-11-22T08:00');
 });
 
 test('Google Business Profile standard updates include required details and reject unsupported media', () => {

@@ -8,6 +8,7 @@ import { getSocialAccounts, getAccountBrands, sendAgentMessage, assistPostPrompt
 import type { SocialPost, MediaItem } from '@/lib/types';
 import { AgentPicker } from '@/components/agent-picker';
 import { SimpleAccountPicker } from '@/components/simple-account-picker';
+import { zonedToIso } from '@/lib/planner-time';
 
 export const Route = createFileRoute('/quick-create')({ component: QuickCreate });
 type Choice = 'call' | 'website' | 'comment' | 'learn';
@@ -119,5 +120,4 @@ function QuickCreate() {
     </div>
   </main>;
 }
-function zonedToIso(value:string,zone:string):string {if(!value)throw new Error('Choose a date and time.');const input=new Date(`${value}:00Z`);if(Number.isNaN(input.getTime()))throw new Error('Invalid date and time.');const formatter=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});const parts=Object.fromEntries(formatter.formatToParts(input).map(p=>[p.type,p.value]));const shown=Date.UTC(Number(parts['year']),Number(parts['month'])-1,Number(parts['day']),Number(parts['hour']),Number(parts['minute']));const output=new Date(input.getTime()+(input.getTime()-shown));const verify=formatter.formatToParts(output);const check=Object.fromEntries(verify.map(p=>[p.type,p.value]));const target=value.replace('T',' ').slice(0,16);const actual=`${check['year']}-${check['month']}-${check['day']} ${check['hour']}:${check['minute']}`;if(target!==actual)throw new Error('This local time does not exist in the selected timezone. Choose another time.');return output.toISOString();}
 function formatDeviceTime(value:string,zone:string):string {try{return new Intl.DateTimeFormat(undefined,{dateStyle:'full',timeStyle:'short'}).format(new Date(zonedToIso(value,zone)));}catch{return 'Choose a valid date and time';}}

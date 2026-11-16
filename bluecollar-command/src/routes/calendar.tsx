@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -7,8 +7,10 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useBrand } from "@/lib/brand-context";
 import {
   getPosts,
+  getPlannerTimezone,
   reschedulePost,
 } from "@/lib/marketing.functions";
+import { dateKeyInZone, formatInZone, localInputInZone, zonedToIso } from "@/lib/planner-time";
 import { Card, PageHeader, StatusBadge, PlatformStack } from "@/components/shared";
 import { PLATFORMS, STATUS_META } from "@/lib/types";
 import type { Platform, PostStatus, SocialPost } from "@/lib/types";
@@ -41,6 +43,13 @@ function CalendarPage() {
   const [statusFilter, setStatusFilter] = useState<PostStatus | "all">("all");
   const [selected, setSelected] = useState<SocialPost | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const timezoneQuery = useQuery({ queryKey: ['planner-timezone'], queryFn: () => getPlannerTimezone() });
+  const zone = timezoneQuery.data?.timezone || 'America/New_York';
+  useEffect(() => {
+    if (!timezoneQuery.data?.timezone) return;
+    const [year, month, day] = dateKeyInZone(new Date(), zone).split('-').map(Number);
+    setCursor(new Date(year, month - 1, day));
+  }, [timezoneQuery.data?.timezone]);
 
   const postsQuery = useQuery({
     queryKey: ["posts", scope === "all" ? "all" : brand.id],
@@ -78,25 +87,23 @@ function CalendarPage() {
   }
 
   function sameDay(a: Date, b: Date) {
-    return (
-      a.getFullYear() === b.getFullYear() &&
-      a.getMonth() === b.getMonth() &&
-      a.getDate() === b.getDate()
-    );
+    return dateKeyInZone(a, zone) === `${b.getFullYear()}-${String(b.getMonth() + 1).padStart(2, '0')}-${String(b.getDate()).padStart(2, '0')}`;
   }
 
   function handleDrop(targetDate: Date) {
     if (!dragId) return;
     const p = posts.find((x) => x.id === dragId);
     if (!p) return;
-    targetDate.setHours(10, 0, 0, 0);
-    rescheduleMut.mutate({ id: p.id, scheduledAt: targetDate.toISOString() });
+    if (!timezoneQuery.data?.timezone) { toast.error('Set the GHL subaccount timezone before rescheduling.'); return; }
+    const date = `${targetDate.getFullYear()}-${String(targetDate.getMonth()+1).padStart(2,'0')}-${String(targetDate.getDate()).padStart(2,'0')}`;
+    rescheduleMut.mutate({ id: p.id, scheduledAt: zonedToIso(`${date}T10:00`, zone) });
     setDragId(null);
   }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
       {(postsQuery.error) && <p role="alert" className="mb-4 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{(postsQuery.error)?.message}</p>}
+      <p className="mb-4 text-sm text-muted-foreground">Calendar dates and times use the GHL subaccount timezone: {zone}.</p>
       <PageHeader
         title="Content calendar"
         description={scope === "all" ? "All posts from this GHL subaccount, including existing published posts" : `Posts assigned to ${brand.name}`}
@@ -268,7 +275,7 @@ function CalendarPage() {
                       </div>
                       {p.scheduledAt && (
                         <div className="mt-1 text-[10px] opacity-70">
-                          {new Date(p.scheduledAt).toLocaleTimeString("en", {
+                          {formatInZone(new Date(p.scheduledAt), zone, {
                             hour: "numeric",
                             minute: "2-digit",
                           })}
@@ -318,7 +325,7 @@ function CalendarPage() {
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {(p.scheduledAt ?? p.publishedAt)
-                        ? new Date(p.scheduledAt ?? p.publishedAt!).toLocaleString("en", {
+                        ? formatInZone(new Date(p.scheduledAt ?? p.publishedAt!), zone, {
                             dateStyle: "medium",
                             timeStyle: "short",
                           })
@@ -335,6 +342,7 @@ function CalendarPage() {
       {selected && (
         <PostDrawer
           post={selected}
+          zone={zone}
           onClose={() => setSelected(null)}
           onReschedule={(id, at) => {
             rescheduleMut.mutate({ id, scheduledAt: at });
@@ -348,10 +356,12 @@ function CalendarPage() {
 
 function PostDrawer({
   post,
+  zone,
   onClose,
   onReschedule,
 }: {
   post: SocialPost;
+  zone: string;
   onClose: () => void;
   onReschedule: (id: string, at: string) => void;
 }) {
@@ -359,7 +369,7 @@ function PostDrawer({
     try {
       if (post.scheduledAt) {
         const d = new Date(post.scheduledAt);
-        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 16);
+        if (!isNaN(d.getTime())) return localInputInZone(d, zone);
       }
     } catch {
       // fallback
@@ -392,17 +402,17 @@ function PostDrawer({
         {post.scheduledAt && (
           <p className="mt-3 text-xs text-muted-foreground">
             Scheduled:{" "}
-            {new Date(post.scheduledAt).toLocaleString("en", {
+            {formatInZone(new Date(post.scheduledAt), zone, {
               dateStyle: "medium",
               timeStyle: "short",
-            })}
+            })} ({zone})
           </p>
         )}
 
         <div className="mt-5 space-y-2">
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Schedule / Reschedule (Date Picker)
+              Schedule / Reschedule ({zone})
             </span>
             <input
               type="datetime-local"
@@ -415,9 +425,7 @@ function PostDrawer({
             <button
               type="button"
               onClick={() => {
-                const d = new Date();
-                d.setHours(d.getHours() + 2);
-                setAt(d.toISOString().slice(0, 16));
+                setAt(localInputInZone(new Date(Date.now() + 2 * 60 * 60 * 1000), zone));
               }}
               className="rounded-md border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
             >
@@ -426,10 +434,10 @@ function PostDrawer({
             <button
               type="button"
               onClick={() => {
-                const d = new Date();
-                d.setDate(d.getDate() + 1);
-                d.setHours(10, 0, 0, 0);
-                setAt(d.toISOString().slice(0, 16));
+                const current = localInputInZone(new Date(), zone);
+                const next = new Date(`${current.slice(0, 10)}T12:00:00Z`);
+                next.setUTCDate(next.getUTCDate() + 1);
+                setAt(`${next.toISOString().slice(0, 10)}T10:00`);
               }}
               className="rounded-md border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
             >
@@ -438,10 +446,10 @@ function PostDrawer({
             <button
               type="button"
               onClick={() => {
-                const d = new Date();
-                d.setDate(d.getDate() + 2);
-                d.setHours(14, 0, 0, 0);
-                setAt(d.toISOString().slice(0, 16));
+                const current = localInputInZone(new Date(), zone);
+                const next = new Date(`${current.slice(0, 10)}T12:00:00Z`);
+                next.setUTCDate(next.getUTCDate() + 2);
+                setAt(`${next.toISOString().slice(0, 10)}T14:00`);
               }}
               className="rounded-md border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
             >
@@ -450,7 +458,7 @@ function PostDrawer({
           </div>
           <button
             disabled={!at || !["draft", "in_review", "approved", "scheduled"].includes(post.status)}
-            onClick={() => onReschedule(post.id, new Date(at).toISOString())}
+            onClick={() => { try { onReschedule(post.id, zonedToIso(at, zone)); } catch (error) { toast.error(error instanceof Error ? error.message : 'Choose a valid time.'); } }}
             className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
           >
             {post.status === "scheduled" ? "Reschedule" : "Schedule post"}
