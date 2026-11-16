@@ -55,15 +55,33 @@ function QuickCreate() {
   const brandAccounts = choices.filter(a=>assignments.data?.[a.id]===brand.id);
   useEffect(()=>{if (!choices.length || accountIds.length) return;const saved=localStorage.getItem(`bcc:usual:${brand.id}`);const preferred=saved?.split(',').filter(id=>choices.some(a=>a.id===id)) ?? [];if(preferred.length)setAccountIds(preferred);else if(brandAccounts.length)setAccountIds(brandAccounts.map(a=>a.id));},[choices.length,brandAccounts.length,brand.id]);
   const selected=choices.filter(a=>accountIds.includes(a.id));
+  async function requestImageWithRetry(prompt:string){
+    let lastError='GHL did not return an image result.';
+    for(let attempt=1;attempt<=2;attempt++){
+      try{
+        const image=await mediaFn({data:{brandId:brand.id,type:'image',prompt}});
+        if(image?.mediaUrl)return image;
+        lastError=image?.error || lastError;
+        if(/capability|permission|authorization|401|403/i.test(lastError))break;
+      }catch(error){lastError=error instanceof Error?error.message:lastError;}
+      if(attempt===1)setGenerationPhase('GHL did not return an image. Trying once more…');
+    }
+    throw new Error(`${lastError} The planner tried twice; your caption is still here.`);
+  }
   const ask=useMutation({mutationFn:async (kind:'first'|'caption'|'image')=>{
     if(kind==='first')setGenerationPhase('Writing your caption…');
-    if(kind==='image') return mediaFn({data:{brandId:brand.id,type:'image',prompt:`Photorealistic documentary-style social image for ${brand.name}. Subject: ${topic}. Natural lighting, believable people and equipment, no logos or text. Do not invent specific business claims. Create a different image from the current one. ${imageFeedback.trim()?`User feedback for this revision: ${imageFeedback.trim()}`:''}`}});
+    if(kind==='image') return requestImageWithRetry(`Photorealistic documentary-style social image for ${brand.name}. Subject: ${topic}. Natural lighting, believable people and equipment, no logos or text. Do not invent specific business claims. Create a different image from the current one. ${imageFeedback.trim()?`User feedback for this revision: ${imageFeedback.trim()}`:''}`);
     const captionResult=await agent({data:{brandId:brand.id,message:`Write one clear, natural social caption for ${brand.name}. Topic: ${topic}. Desired action: ${purposes.find(p=>p.id===goal)?.cta}. Use only verified brand knowledge. No invented prices, service area, response time, testimonials, or guarantees. Keep it concise and specific. ${kind==='caption'?`Revise this caption: ${caption}. Write a fresh version that keeps verified facts. ${captionFeedback.trim()?`Follow this user feedback: ${captionFeedback.trim()}`:'Use a different angle.'}`:''}`}});
+    if(!captionResult?.reply?.trim())throw new Error(captionResult?.error || 'GHL did not return a caption. Try again.');
     if(kind==='first' && mediaChoice==='ai'){
       setGenerationPhase('Creating your image…');
-      const image=await mediaFn({data:{brandId:brand.id,type:'image',prompt:`Photorealistic documentary-style social image for ${brand.name}. Subject: ${topic}. Natural lighting, believable people and equipment, no logos or text. Do not invent specific business claims.`}});
-      if(!image?.mediaUrl)throw new Error(image?.error || 'GHL did not return an image result. Check the selected agent’s image generation capability and try again.');
-      return {...captionResult,mediaUrl:image.mediaUrl};
+      try{
+        const image=await requestImageWithRetry(`Photorealistic documentary-style social image for ${brand.name}. Subject: ${topic}. Natural lighting, believable people and equipment, no logos or text. Do not invent specific business claims.`);
+        return {...captionResult,mediaUrl:image.mediaUrl};
+      }catch(error){
+        setError(`${error instanceof Error?error.message:'Image generation failed.'} You can review the caption and retry the image.`);
+        return captionResult;
+      }
     }
     return captionResult;
   },onSuccess:(result,kind)=>{setGenerationPhase('');if(!result){setError('GHL returned no result. Try again; your current content is unchanged.');return;}if(kind==='image'){if('mediaUrl' in result && result.mediaUrl){setMediaUrl(result.mediaUrl);setImageFeedback('');setRegenerationStatus('Image updated.');}else setError(result.error || 'The agent did not return an image. Your current image is still here.');}else if('reply' in result){if(!result.reply?.trim()){setError('The agent did not return a caption. Your current caption is still here.');return;}if('mediaUrl' in result && result.mediaUrl)setMediaUrl(result.mediaUrl);setCaption(result.reply);setTitle(('title' in result && result.title) || topic.slice(0,70));if(kind==='caption'){setCaptionFeedback('');setRegenerationStatus('Caption updated.');}setStep(6);}},onError:e=>{setGenerationPhase('');setError(e.message)}});
