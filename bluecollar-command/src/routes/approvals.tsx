@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -15,9 +15,10 @@ import {
   Wand2,
   ExternalLink,
   Save,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useBrand } from "@/lib/brand-context";
 import {
   getPosts,
   approvePost,
@@ -50,11 +51,10 @@ export const Route = createFileRoute("/approvals")({
 const REVIEW_STATUSES: PostStatus[] = ["draft", "in_review", "approved", "denied"];
 
 function ApprovalsPage() {
-  const { brand } = useBrand();
   const queryClient = useQueryClient();
   const postsQuery = useQuery({
-    queryKey: ["posts", brand.id],
-    queryFn: () => getPosts({ data: { brandId: brand.id } }),
+    queryKey: ["posts", "all"],
+    queryFn: () => getPosts({ data: {} }),
   });
   const approversQuery = useQuery({
     queryKey: ["approvers"],
@@ -63,6 +63,14 @@ function ApprovalsPage() {
   const posts = postsQuery.data ?? [];
   const approvers = approversQuery.data ?? [];
   const pending = posts.filter((p) => REVIEW_STATUSES.includes(p.status));
+  const [reviewIndex, setReviewIndex] = useState(0);
+  useEffect(() => {
+    const requestedId = new URLSearchParams(window.location.search).get('post');
+    if (!requestedId) return;
+    const found = pending.findIndex(post => post.id === requestedId);
+    if (found >= 0) setReviewIndex(found);
+  }, [postsQuery.data]);
+  const activePost = pending[Math.min(reviewIndex, Math.max(0, pending.length - 1))];
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const approve = useServerFn(approvePost);
@@ -74,8 +82,8 @@ function ApprovalsPage() {
   const requestMediaFn = useServerFn(requestMedia);
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["posts", brand.id] });
-    queryClient.invalidateQueries({ queryKey: ["analytics", brand.id] });
+    queryClient.invalidateQueries({ queryKey: ["posts"] });
+    queryClient.invalidateQueries({ queryKey: ["analytics"] });
   };
 
   const approveMut = useMutation({
@@ -129,7 +137,7 @@ function ApprovalsPage() {
     <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
       <PageHeader
         title="Approvals"
-        description={`${pending.length} post${pending.length === 1 ? "" : "s"} in review for ${brand.name}`}
+        description={`${pending.length} post${pending.length === 1 ? "" : "s"} to review across your knowledge bases`}
       />
       <div className="mt-8 space-y-4">
         {pending.length === 0 ? (
@@ -139,11 +147,17 @@ function ApprovalsPage() {
             </p>
           </Card>
         ) : (
-          pending.map((p) => (
+          <>
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-3">
+              <button type="button" aria-label="Previous post" disabled={reviewIndex === 0} onClick={() => setReviewIndex(i => i - 1)} className="rounded-lg border border-border p-2 disabled:opacity-40"><ChevronLeft className="h-5 w-5" /></button>
+              <span className="text-sm font-medium">Post {Math.min(reviewIndex + 1, pending.length)} of {pending.length}</span>
+              <button type="button" aria-label="Next post" disabled={reviewIndex >= pending.length - 1} onClick={() => setReviewIndex(i => i + 1)} className="rounded-lg border border-border p-2 disabled:opacity-40"><ChevronRight className="h-5 w-5" /></button>
+            </div>
+          {activePost && [activePost].map((p) => (
             <ApprovalRow
               key={p.id}
               post={p}
-              brandId={brand.id}
+              brandId={p.brandId}
               approvers={approvers}
               onApprove={(approverName) => approveMut.mutate({ id: p.id, approverName })}
               onDeny={(reason, approverName) => denyMut.mutate({ id: p.id, reason, approverName })}
@@ -161,6 +175,7 @@ function ApprovalsPage() {
               }
             />
           ))
+          }</>
         )}
       </div>
 
