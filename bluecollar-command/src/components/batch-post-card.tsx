@@ -36,7 +36,7 @@ export function BatchPostCard({ post, brandId, timezone, onUpdate, onRemove, onR
     setGeneratingMedia(true);
     try {
       const result = await onRequestMedia({ brandId, prompt: mediaPrompt.trim(), type: kind, ...(post.agentExecutionId ? { executionId: post.agentExecutionId } : {}) });
-      if (!result.mediaUrl) throw new Error(result.error || `The agent did not return a ${kind}.`);
+      if (!result?.mediaUrl) throw new Error(result?.error || `GHL did not return a ${kind} result. Check this agent's media generation capability and try again.`);
       onUpdate(post.id, { media: [{ id: `media_${crypto.randomUUID()}`, url: result.mediaUrl, type: kind, caption: mediaPrompt.trim() }], ...(result.executionId ? { agentExecutionId: result.executionId } : {}) });
       setMediaError(false);
       toast.success(`${kind === 'video' ? 'Video' : 'Photo'} updated`);

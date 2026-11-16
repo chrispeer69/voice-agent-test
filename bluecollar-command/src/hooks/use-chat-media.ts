@@ -71,7 +71,7 @@ export function useChatMedia(brandId: BrandId, post: SocialPost, setPost: SetPos
               executionId: data.executionId,
             },
           });
-          if (media.mediaUrl) {
+          if (media?.mediaUrl) {
             const item: MediaItem = {
               id: `m_${Math.random().toString(36).slice(2, 8)}`,
               url: media.mediaUrl,
@@ -83,7 +83,7 @@ export function useChatMedia(brandId: BrandId, post: SocialPost, setPost: SetPos
               media: [...p.media, item],
             }));
           }
-          if (media.error) toast.warning(`Visual: ${media.error}`);
+          if (media?.error) toast.warning(`Visual: ${media.error}`);
         } catch {
           toast.warning("Visual generation unavailable — caption saved.");
         }

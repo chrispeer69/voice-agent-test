@@ -416,7 +416,7 @@ function ApprovalRow({
                         type: "image",
                         executionId: post.agentExecutionId,
                       });
-                      if (res.mediaUrl) {
+                      if (res?.mediaUrl) {
                         setLocalMedia(res.mediaUrl);
                         setImgError(false);
                         setActiveMediaPrompt(false);
@@ -436,7 +436,7 @@ function ApprovalRow({
                         });
                         toast.success("New visual generated!");
                       } else {
-                        toast.error(res.error || "Failed to generate visual");
+                        toast.error(res?.error || "GHL did not return an image result. Try again.");
                       }
                     } catch (err) {
                       toast.error(err instanceof Error ? err.message : "Error generating image");
